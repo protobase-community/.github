@@ -1,0 +1,124 @@
+# Moves a template to the latest Protobase release and merges the move once the template's CI passes.
+#
+# Every @protobase/* package gets the same exact version and bun.lock follows. The change goes to one branch,
+# protobase-bump, so a template never has more than one bump pull request: a newer release replaces the branch
+# and the open pull request with it. A pull request whose CI fails stays open for a person.
+#
+# Pushes made with the default GITHUB_TOKEN start no pull_request runs, so this workflow starts the template's
+# CI with workflow_dispatch on the branch, waits for it and merges the pull request itself when it passes. The
+# template needs "Allow GitHub Actions to create and approve pull requests" on, so GITHUB_TOKEN may open one.
+name: protobase-bump
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The Protobase release to move to; the latest on npm when empty.
+        type: string
+        default: ""
+      ci-workflow:
+        description: The template's CI workflow file, which must accept workflow_dispatch.
+        type: string
+        default: ci.yml
+      bun-version:
+        description: The Bun that writes bun.lock; keep it the same as the template's CI.
+        type: string
+        default: 1.4.2
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    concurrency:
+      group: protobase-bump-${{ github.repository }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BRANCH: protobase-bump
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: template
+      - uses: actions/checkout@v4
+        with:
+          repository: protobase-community/.github
+          ref: main
+          path: tool
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ inputs.bun-version }}
+
+      - id: bump
+        working-directory: template
+        env:
+          VERSION: ${{ inputs.version }}
+        run: bun ../tool/.github/protobase-bump/bump.ts . "$VERSION" >> "$GITHUB_OUTPUT"
+
+      - if: steps.bump.outputs.changed == 'true'
+        working-directory: template
+        env:
+          CURRENT: ${{ steps.bump.outputs.current }}
+          TARGET: ${{ steps.bump.outputs.target }}
+        run: |
+          bun install
+
+          if git fetch --quiet --depth 1 origin "$BRANCH" 2>/dev/null && git diff --quiet FETCH_HEAD -- package.json bun.lock README.md; then
+            echo "The $BRANCH branch already moves the template to $TARGET."
+            exit 0
+          fi
+
+          git checkout -B "$BRANCH"
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "chore: protobase $TARGET"
+          git push --force origin "$BRANCH"
+
+          title="chore: protobase $TARGET"
+          body="Moves the @protobase/* packages from $CURRENT to $TARGET. What changed: https://github.com/PrototeamHQ/protobase/releases
+
+          This pull request merges itself when CI passes. When CI fails it stays open for a person, until a newer release replaces it."
+          number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$title" --body "$body"
+          else
+            gh pr create --head "$BRANCH" --title "$title" --body "$body"
+          fi
+
+      - name: Merge the open bump pull request when CI passes
+        env:
+          CI_WORKFLOW: ${{ inputs.ci-workflow }}
+        run: |
+          read -r number sha <<< "$(gh pr list --head "$BRANCH" --state open --json number,headRefOid --jq '.[0] // empty | "\(.number) \(.headRefOid)"')"
+          if [ -z "$number" ]; then
+            echo "No open bump pull request."
+            exit 0
+          fi
+
+          ci_run() {
+            gh run list --workflow "$CI_WORKFLOW" --commit "$sha" --limit 1 --json databaseId --jq '.[0].databaseId // empty'
+          }
+
+          run=$(ci_run)
+          if [ -z "$run" ]; then
+            gh workflow run "$CI_WORKFLOW" --ref "$BRANCH"
+            for _ in $(seq 30); do
+              sleep 10
+              run=$(ci_run)
+              [ -n "$run" ] && break
+            done
+          fi
+          if [ -z "$run" ]; then
+            echo "::error::$CI_WORKFLOW did not start on $sha."
+            exit 1
+          fi
+
+          if ! gh run watch "$run" --exit-status --interval 30 > /dev/null; then
+            echo "::warning::CI did not pass on pull request #$number; it stays open for a person."
+            exit 0
+          fi
+          gh pr merge "$number" --squash --match-head-commit "$sha" --delete-branch
