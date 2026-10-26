@@ -1,6 +1,6 @@
 # Moves a template to the latest Protobase release and merges the move once the template's CI passes.
 #
-# Every @protobase/* package gets the same exact version and bun.lock follows. The change goes to one branch,
+# Every @protobase/* package gets the same specifier, locked to the release's minor (~<version>), and bun.lock follows. The change goes to one branch,
 # protobase-bump, so a template never has more than one bump pull request: a newer release replaces the branch
 # and the open pull request with it. A pull request whose CI fails stays open for a person.
 #
@@ -52,6 +52,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ inputs.bun-version }}
+
+      - working-directory: tool/.github/protobase-bump
+        run: bun install --frozen-lockfile
 
       - id: bump
         working-directory: template

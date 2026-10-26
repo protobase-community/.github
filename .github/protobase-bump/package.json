@@ -1,0 +1,11 @@
+{
+  "name": "protobase-bump",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "semver": "7.8.5"
+  },
+  "devDependencies": {
+    "@types/semver": "7.8.0"
+  }
+}

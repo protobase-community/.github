@@ -1,11 +1,19 @@
 // Moves the template in <dir> to a Protobase release: the one given, or the latest on npm. Every @protobase/*
-// package gets the same exact version, as the Protobase CLI requires. It prints `current`, `target` and `changed`
+// package gets the same specifier, locked to that release's minor (~<version>). It prints `current`, `target` and `changed`
 // as GITHUB_OUTPUT lines and never moves a template to an older release.
 //
 //   bun bump.ts <dir> [version]
 
 import { join } from "node:path"
-import { compareReleases, protobaseVersions, setProtobaseVersion, setReadmeVersion } from "./version"
+import {
+  currentRelease,
+  isOlder,
+  protobaseSpecifiers,
+  release,
+  setProtobaseSpecifier,
+  setReadmeVersion,
+  specifierFor,
+} from "./version"
 
 const [dir, requested] = process.argv.slice(2)
 if (!dir) throw new Error("Usage: bun bump.ts <dir> [version]")
@@ -14,16 +22,17 @@ const packagePath = join(dir, "package.json")
 const readmePath = join(dir, "README.md")
 
 const packageJson = await Bun.file(packagePath).text()
-const versions = protobaseVersions(packageJson)
-if (versions.length === 0) throw new Error(`No @protobase/* dependencies in ${packagePath}`)
+const specifiers = protobaseSpecifiers(packageJson)
+if (specifiers.length === 0) throw new Error(`No @protobase/* dependencies in ${packagePath}`)
 
-const current = versions.reduce((newest, version) => (compareReleases(version, newest) > 0 ? version : newest))
-const target = requested || (await latestRelease())
-if (compareReleases(target, current) < 0) throw new Error(`Refusing to move from ${current} down to ${target}`)
+const current = currentRelease(specifiers)
+const target = release(requested || (await latestRelease()))
+if (isOlder(target, current)) throw new Error(`Refusing to move from ${current} down to ${target}`)
 
-const changed = versions.some((version) => version !== target)
+const specifier = specifierFor(target)
+const changed = specifiers.some((existing) => existing !== specifier)
 if (changed) {
-  await Bun.write(packagePath, setProtobaseVersion(packageJson, target))
+  await Bun.write(packagePath, setProtobaseSpecifier(packageJson, specifier))
   const readme = Bun.file(readmePath)
   if (await readme.exists()) await Bun.write(readmePath, setReadmeVersion(await readme.text(), target))
 }
