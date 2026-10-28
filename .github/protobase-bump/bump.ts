@@ -1,5 +1,5 @@
 // Moves the template in <dir> to a Protobase release: the one given, or the latest on npm. Every @protobase/*
-// package gets the same specifier, locked to that release's minor (~<version>). It prints `current`, `target` and `changed`
+// package gets the same specifier, the release's caret range (^<version>). It prints `current`, `target` and `changed`
 // as GITHUB_OUTPUT lines and never moves a template to an older release.
 //
 //   bun bump.ts <dir> [version]

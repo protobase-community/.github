@@ -18,8 +18,8 @@ export function setReadmeVersion(readme: string, version: string) {
   return readme.replace(readmeMention, (_, before, after) => `${before}${version}${after}`)
 }
 
-// The release a template is on: the newest lowest version any of its specifiers allows, so "~0.46.12" and
-// "0.46.12" both mean 0.46.12.
+// The release a template is on: the newest lowest version any of its specifiers allows, so "^0.46.12",
+// "~0.46.12" and "0.46.12" all mean 0.46.12.
 export function currentRelease(specifiers: string[]) {
   const releases = specifiers.map((specifier) => {
     const lowest = semver.validRange(specifier) && semver.minVersion(specifier)
@@ -35,9 +35,9 @@ export function release(version: string) {
   return parsed.version
 }
 
-// Locks a template to the minor of a release, taking its patches.
+// The caret range of a release: it takes the release's patches below 1.0 and its minors and patches from 1.0 on.
 export function specifierFor(version: string) {
-  return `~${release(version)}`
+  return `^${release(version)}`
 }
 
 export function isOlder(target: string, current: string) {

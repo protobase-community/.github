@@ -57,6 +57,10 @@ describe("setReadmeVersion", () => {
 })
 
 describe("currentRelease", () => {
+  test("reads ^ ranges as the release they start at", () => {
+    expect(currentRelease(["^0.50.1", "^0.50.0"])).toBe("0.50.1")
+  })
+
   test("reads ~ ranges as the release they start at", () => {
     expect(currentRelease(["~0.46.9", "~0.46.12"])).toBe("0.46.12")
   })
@@ -79,24 +83,30 @@ describe("release", () => {
 })
 
 describe("specifierFor", () => {
-  test("locks to the minor of the release", () => {
-    expect(specifierFor("0.47.1")).toBe("~0.47.1")
+  test("is the caret range of the release", () => {
+    expect(specifierFor("0.47.1")).toBe("^0.47.1")
   })
 })
 
 describe("bumping", () => {
   test("an already current template keeps its specifiers", () => {
-    const specifiers = ["~0.46.12", "~0.46.12"]
+    const specifiers = ["^0.46.12", "^0.46.12"]
     expect(specifiers.every((specifier) => specifier === specifierFor("0.46.12"))).toBe(true)
     expect(isOlder("0.46.12", currentRelease(specifiers))).toBe(false)
   })
 
   test("a newer minor moves the template forward", () => {
-    expect(isOlder("0.47.0", currentRelease(["~0.46.12"]))).toBe(false)
-    expect(specifierFor("0.47.0")).toBe("~0.47.0")
+    expect(isOlder("0.47.0", currentRelease(["^0.46.12"]))).toBe(false)
+    expect(specifierFor("0.47.0")).toBe("^0.47.0")
+  })
+
+  test("a template still on ~ ranges of the release moves to its ^ range", () => {
+    const specifiers = ["~0.46.12", "~0.46.12"]
+    expect(isOlder("0.46.12", currentRelease(specifiers))).toBe(false)
+    expect(specifiers.every((specifier) => specifier === specifierFor("0.46.12"))).toBe(false)
   })
 
   test("an older release is refused, ordered by number, not by text", () => {
-    expect(isOlder("0.46.9", currentRelease(["~0.46.12"]))).toBe(true)
+    expect(isOlder("0.46.9", currentRelease(["^0.46.12"]))).toBe(true)
   })
 })
