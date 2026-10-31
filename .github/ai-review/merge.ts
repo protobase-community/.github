@@ -1,10 +1,13 @@
 // Merges a pull request that carries the ai-approved label and a clean AI review of its head, once everything else on
-// the head has passed. It runs in the review's job after the review, or alone when the label is added or the branch
-// only merged its base in. It never merges a pull request whose head is in another repository, from an author who
-// cannot write to the repository, whose head moves on while it waits, or that carries the do-not-merge label, and it
-// stops at the first failed check. A release, from development into the default branch, never merges here.
+// the head has passed. It runs in the review's job after the review, alone when the label is added or the branch only
+// merged its base in, and when a CI run on the pull request's branch finishes. It tries once and never waits, so it
+// holds no runner while checks run: a check still running leaves the merge to the run that finishes last. It never
+// merges a pull request whose head is in another repository, from an author who cannot write to the repository, or
+// that carries the do-not-merge label, nor with a failed check. A release, from development into the default branch,
+// never merges here.
 //
 //   REPOSITORY=owner/name PR_NUMBER=1 MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
+//   REPOSITORY=owner/name HEAD_BRANCH=topic MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
 import { carriesApproval } from "./approval"
 import { checksState } from "./checks"
 import { approvedSha, marker } from "./comment"
@@ -18,19 +21,29 @@ function required(name: string) {
 }
 
 const repository = required("REPOSITORY")
-const number = Number(required("PR_NUMBER"))
 const method = required("MERGE_METHOD")
 const github = gitHub(required("GITHUB_TOKEN"), repository)
 
-const pollMs = 30_000
+function stop(reason: string): never {
+  console.log(`Not merging: ${reason}.`)
+  process.exit(0)
+}
+
+// A CI run started with workflow_dispatch names no pull request, so its branch finds the open one. 0 names none either.
+const given = Number(process.env.PR_NUMBER || 0)
+const number =
+  given > 0
+    ? given
+    : ((await github.openPullRequest(required("HEAD_BRANCH"))) ?? stop(`no open pull request has the head ${process.env.HEAD_BRANCH}`))
+
 const writers = new Set(["admin", "maintain", "write"])
 // github-actions opens the protobase bump pull requests. It is no collaborator, and only this repository's own
 // workflows act as it.
 const workflowAuthor = "github-actions[bot]"
 
-// Why the pull request may not be merged as it is now, or null when its head `sha` may be.
-async function refusal(sha: string) {
-  const pullRequest = await github.pullRequest(number)
+// Why the pull request may not be merged as it is now, or null when its head may be.
+async function refusal(pullRequest: Awaited<ReturnType<typeof github.pullRequest>>) {
+  const sha = pullRequest.head.sha
   if (pullRequest.state !== "open" || pullRequest.draft) return "it is no longer an open, ready pull request"
 
   // A null head repository is a fork that was deleted. Only a head in this very repository ever merges.
@@ -40,7 +53,6 @@ async function refusal(sha: string) {
   if (pullRequest.head.ref === releaseBranch && pullRequest.base.ref === (await github.defaultBranch()))
     return `it is a release from ${releaseBranch} into ${pullRequest.base.ref}, which needs a person's approval`
 
-  if (pullRequest.head.sha !== sha) return `its head moved on from ${sha.slice(0, 7)}`
   if (pullRequest.labels.some((label) => label.name === holdLabel)) return `it has the ${holdLabel} label`
   if (!pullRequest.labels.some((label) => label.name === approvedLabel)) return `it has no ${approvedLabel} label`
 
@@ -53,23 +65,16 @@ async function refusal(sha: string) {
   return null
 }
 
-function stop(reason: string): never {
-  console.log(`Not merging: ${reason}.`)
-  process.exit(0)
-}
+const pullRequest = await github.pullRequest(number)
+const sha = pullRequest.head.sha
+const reason = await refusal(pullRequest)
+if (reason) stop(reason)
 
-const sha = (await github.pullRequest(number)).head.sha
 const ownWorkflowId = (await github.workflowRun(Number(required("RUN_ID")))).workflow_id
+const checks = checksState(await github.workflowRuns(sha), await github.checkRuns(sha), await github.statuses(sha), ownWorkflowId)
+if (checks.state === "red") stop(`these did not pass: ${checks.names.join(", ")}`)
+if (checks.state === "pending") stop(`these still run: ${checks.names.join(", ")}; the CI run that finishes last merges it`)
 
-while (true) {
-  const reason = await refusal(sha)
-  if (reason) stop(reason)
-
-  const checks = checksState(await github.workflowRuns(sha), await github.checkRuns(sha), await github.statuses(sha), ownWorkflowId)
-  if (checks.state === "red") stop(`these did not pass: ${checks.names.join(", ")}`)
-  if (checks.state === "green") break
-  await Bun.sleep(pollMs)
-}
-
+// GitHub refuses the merge when the head moved on since it was read.
 await github.merge(number, sha, method)
 console.log(`Merged ${sha.slice(0, 7)} with ${method}.`)
