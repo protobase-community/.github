@@ -1,6 +1,6 @@
-// Whether a pull request's head carries the approval of the commit its AI review found no issues in.
+// Whether a pull request's head carries the approval of a commit its AI review found no issues in.
 //
-// The reviewed commit itself carries it, and so does a merge commit that only brings the base branch in, such as
+// The approved commit itself carries it, and so does a merge commit that only brings the base branch in, such as
 // GitHub's "Update branch": its first parent carries the approval, its second parent is on the base branch, and the
 // pull request's changed files are the same after the merge as before it. Any other commit needs a new review.
 
@@ -24,10 +24,10 @@ export function sameChanges(before: ComparedFile[], after: ComparedFile[]) {
   return after.every((file) => keys.has(key(file)))
 }
 
-export async function carriesApproval(history: History, head: string, approved: string, baseRef: string) {
+export async function carriesApproval(history: History, head: string, isApproved: (sha: string) => Promise<boolean>, baseRef: string) {
   let sha = head
   for (let step = 0; step <= maxMerges; step++) {
-    if (sha === approved) return true
+    if (await isApproved(sha)) return true
 
     const parents = await history.parents(sha)
     if (parents.length !== 2) return false

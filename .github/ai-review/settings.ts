@@ -22,8 +22,13 @@ export const limits = {
   maxCommentChars: 60_000,
 }
 
-// The label a review that found no issues puts on a pull request when auto-merge is on. Taking it off stops the merge.
+// The label a review that found no issues puts on a pull request, in place of a comment. With auto-merge on, taking it
+// off stops the merge.
 export const approvedLabel = "ai-approved"
+
+// The commit status that records, with auto-merge on, that the review found no issues in a commit. Unlike the label,
+// which a person can add, the auto-merge trusts it only from github-actions.
+export const reviewStatusContext = "ai-review"
 
 // The label that keeps a pull request from being merged automatically, such as one whose merge needs manual steps.
 export const holdLabel = "do-not-merge"

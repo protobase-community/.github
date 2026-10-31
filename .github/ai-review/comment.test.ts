@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comment"
+import { isClean, marker, noIssuesComment, reviewComment, skipComment } from "./comment"
 import { limits } from "./settings"
 
 describe("reviewComment", () => {
@@ -36,16 +36,10 @@ describe("isClean", () => {
   })
 })
 
-describe("approvedSha", () => {
-  const sha = "0123456789abcdef0123456789abcdef01234567"
-
-  test("is the reviewed commit of a review that found no issues", () => {
-    expect(approvedSha(reviewComment(sha, "No issues found."))).toBe(sha)
-  })
-
-  test("is null for a review with findings, a skipped review or another comment", () => {
-    expect(approvedSha(reviewComment(sha, "High, a.ts:1, broken."))).toBeNull()
-    expect(approvedSha(skipComment(sha, "too large."))).toBeNull()
-    expect(approvedSha(`<!-- reviewed ${sha} clean -->`)).toBeNull()
+describe("noIssuesComment", () => {
+  test("says the head has no issues, so earlier findings do not linger", () => {
+    const body = noIssuesComment("0123456789abcdef")
+    expect(body).toStartWith(marker)
+    expect(body).toEndWith("No issues found at the head 0123456; this replaces the earlier review.")
   })
 })

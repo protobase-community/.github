@@ -35,27 +35,29 @@ describe("sameChanges", () => {
 })
 
 describe("carriesApproval", () => {
+  const approved = async (sha: string) => sha === "approved"
+
   test("holds for the reviewed commit itself", async () => {
-    expect(await carriesApproval(history(), "approved", "approved", "main")).toBe(true)
+    expect(await carriesApproval(history(), "approved", approved, "main")).toBe(true)
   })
 
   test("holds for a merge that only brings the base branch in", async () => {
-    expect(await carriesApproval(history(), "merge", "approved", "main")).toBe(true)
+    expect(await carriesApproval(history(), "merge", approved, "main")).toBe(true)
   })
 
   test("does not hold for an ordinary new commit", async () => {
-    expect(await carriesApproval(history(), "next", "approved", "main")).toBe(false)
+    expect(await carriesApproval(history(), "next", approved, "main")).toBe(false)
   })
 
   test("does not hold when the merged commit is not on the base branch", async () => {
-    expect(await carriesApproval(history({ onBase: "diverged" }), "merge", "approved", "main")).toBe(false)
+    expect(await carriesApproval(history({ onBase: "diverged" }), "merge", approved, "main")).toBe(false)
   })
 
   test("does not hold when the merge also changes the pull request's files", async () => {
-    expect(await carriesApproval(history({ after: [file("a.ts", "blob-b")] }), "merge", "approved", "main")).toBe(false)
+    expect(await carriesApproval(history({ after: [file("a.ts", "blob-b")] }), "merge", approved, "main")).toBe(false)
   })
 
   test("does not hold for a merge onto a commit that was never approved", async () => {
-    expect(await carriesApproval(history({ parents: ["unreviewed", "base1"] }), "merge", "approved", "main")).toBe(false)
+    expect(await carriesApproval(history({ parents: ["unreviewed", "base1"] }), "merge", approved, "main")).toBe(false)
   })
 })
