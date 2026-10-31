@@ -25,10 +25,12 @@ on:
 
 jobs:
   review:
+    # Bots are skipped, except github-actions (user id 41898282, login github-actions[bot]), which opens the protobase
+    # bump pull requests.
     if: >-
       !github.event.pull_request.draft &&
       github.event.pull_request.state == 'open' &&
-      github.event.pull_request.user.type != 'Bot'
+      (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
