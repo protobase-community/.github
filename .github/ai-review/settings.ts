@@ -1,6 +1,7 @@
 // The model and request settings for every AI review. Switching models is a change to `model` alone.
 // Settings come from the Scaleway review benchmark: temperature 0.6 and high reasoning effort. The output cap is
-// Scaleway's 32k maximum for this model, because on a big pull request high effort can reason past 16k.
+// Scaleway's 32k maximum for this model, because on a big pull request high effort can reason past 16k. Now and then
+// high effort keeps reasoning until the cap without answering, so the one retry after an empty answer uses medium.
 export const settings = {
   model: "qwen3.6-35b-a3b",
   provider: "Scaleway",
@@ -8,6 +9,7 @@ export const settings = {
   temperature: 0.6,
   maxTokens: 32000,
   reasoningEffort: "high",
+  retryReasoningEffort: "medium",
 }
 
 // What a review may send. Above maxInputChars, full file contents are left out until the whole diff fits; a pull
