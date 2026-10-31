@@ -24,3 +24,10 @@ export const limits = {
 
 // The label a review that found no issues puts on a pull request when auto-merge is on. Taking it off stops the merge.
 export const approvedLabel = "ai-approved"
+
+// The label that keeps a pull request from being merged automatically, such as one whose merge needs manual steps.
+export const holdLabel = "do-not-merge"
+
+// The branch whose pull requests into the default branch are releases. Those never merge automatically: a release
+// needs a person's approval.
+export const releaseBranch = "development"
