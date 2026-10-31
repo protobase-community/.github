@@ -58,6 +58,18 @@ describe("completeAnswer", () => {
     expect(calls()).toBe(2)
   })
 
+  test("asks again with less reasoning effort", async () => {
+    const efforts: string[] = []
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const effort = JSON.parse(String(init.body)).reasoning_effort
+      efforts.push(effort)
+      const content = effort === "high" ? "" : "No issues found."
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: content ? "stop" : "length" }] })}\n\ndata: [DONE]\n\n`)
+    }) as unknown as typeof fetch
+    expect((await completeAnswer("key", "system", "user")).content).toBe("No issues found.")
+    expect(efforts).toEqual(["high", "medium"])
+  })
+
   test("returns the second empty answer without asking a third time", async () => {
     const calls = answers("", "", "never sent")
     expect((await completeAnswer("key", "system", "user")).content).toBe("")

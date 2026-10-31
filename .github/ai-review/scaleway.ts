@@ -21,7 +21,7 @@ async function send(key: string, body: string) {
 
 export type Completion = { content: string; finish: string | null; usage: unknown }
 
-export async function complete(key: string, system: string, user: string): Promise<Completion> {
+export async function complete(key: string, system: string, user: string, effort: string = settings.reasoningEffort): Promise<Completion> {
   const body = JSON.stringify({
     model: settings.model,
     messages: [
@@ -32,7 +32,7 @@ export async function complete(key: string, system: string, user: string): Promi
     stream_options: { include_usage: true },
     temperature: settings.temperature,
     max_tokens: settings.maxTokens,
-    reasoning_effort: settings.reasoningEffort,
+    reasoning_effort: effort,
   })
   const response = await send(key, body)
   if (!response.body) throw new Error("Scaleway sent no response body")
@@ -62,9 +62,10 @@ export async function complete(key: string, system: string, user: string): Promi
   return { content, finish, usage }
 }
 
-// The model sometimes answers with nothing, whether it ran out of budget or stopped early, so an empty answer is asked for once more.
+// The model sometimes answers with nothing, whether it ran out of budget or stopped early, so an empty answer is asked
+// for once more, with less reasoning effort.
 export async function completeAnswer(key: string, system: string, user: string) {
   const completion = await complete(key, system, user)
   if (completion.content.trim()) return completion
-  return complete(key, system, user)
+  return complete(key, system, user, settings.retryReasoningEffort)
 }
