@@ -2,14 +2,14 @@
 // the head has passed. It runs in the review's job after the review, or alone when the label is added or the branch
 // only merged its base in. It never merges a pull request whose head is in another repository, from an author who
 // cannot write to the repository, whose head moves on while it waits, or that carries the do-not-merge label, and it
-// stops at the first failed check.
+// stops at the first failed check. A release, from development into the default branch, never merges here.
 //
 //   REPOSITORY=owner/name PR_NUMBER=1 MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
 import { carriesApproval } from "./approval"
 import { checksState } from "./checks"
 import { approvedSha, marker } from "./comment"
 import { gitHub } from "./github"
-import { approvedLabel, holdLabel } from "./settings"
+import { approvedLabel, holdLabel, releaseBranch } from "./settings"
 
 function required(name: string) {
   const value = process.env[name]
@@ -36,6 +36,9 @@ async function refusal(sha: string) {
   // A null head repository is a fork that was deleted. Only a head in this very repository ever merges.
   const headRepository = pullRequest.head.repo === null ? null : pullRequest.head.repo.full_name
   if (headRepository !== repository) return `its head is in ${headRepository ?? "a deleted fork"}, not in ${repository}`
+
+  if (pullRequest.head.ref === releaseBranch && pullRequest.base.ref === (await github.defaultBranch()))
+    return `it is a release from ${releaseBranch} into ${pullRequest.base.ref}, which needs a person's approval`
 
   if (pullRequest.head.sha !== sha) return `its head moved on from ${sha.slice(0, 7)}`
   if (pullRequest.labels.some((label) => label.name === holdLabel)) return `it has the ${holdLabel} label`

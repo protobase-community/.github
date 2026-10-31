@@ -70,9 +70,14 @@ export function gitHub(token: string, repository: string) {
         labels: { name: string }[]
         changed_files: number
         // repo is null when the pull request came from a fork that was deleted since.
-        head: { sha: string; repo: { full_name: string } | null }
+        head: { sha: string; ref: string; repo: { full_name: string } | null }
         base: { sha: string; ref: string }
       }
+    },
+
+    async defaultBranch() {
+      const repo = (await (await request(`/repos/${repository}`)).json()) as { default_branch: string }
+      return repo.default_branch
     },
 
     async description() {

@@ -7,7 +7,8 @@
 # merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review. It
 # never merges a pull request whose head is in another repository or a deleted fork, from an author without write
 # access, whose head moved on while it waited, or that carries the do-not-merge label, and leaves a pull request with
-# a failed check open for a person. Taking do-not-merge off starts the merge again.
+# a failed check open for a person. Taking do-not-merge off starts the merge again. A release, a pull request from
+# development into the default branch, is reviewed but never merged here: it needs a person's approval.
 # A merge needs both contents: write and pull-requests: write from the caller. This job asks for no permissions of
 # its own, so a caller without auto-merge keeps working with contents: read and pull-requests: write.
 #
