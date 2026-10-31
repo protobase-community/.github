@@ -49,7 +49,8 @@ on:
 jobs:
   review:
     # Bots are skipped, except github-actions (user id 41898282, login github-actions[bot]), which opens the protobase
-    # bump pull requests. Of label events only the approval label's count.
+    # bump pull requests. Of label events only the approval label's count. Every pull_request_target event, labeled
+    # too, carries github.event.pull_request; only workflow_dispatch has none, so it is checked first.
     if: >-
       github.event_name == 'workflow_dispatch' || (
         !github.event.pull_request.draft &&
@@ -57,8 +58,8 @@ jobs:
         (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282) &&
         (github.event.action != 'labeled' || github.event.label.name == 'ai-approved'))
     runs-on: ubuntu-latest
-    # No permissions of its own: the job gets the caller's, which must include contents: write and pull-requests: write
-    # for auto-merge. A job permissions block would either break callers that grant contents: read or take away write.
+    # No permissions of its own: the job gets the caller's. Every caller grants pull-requests: write for the comment,
+    # as .github/ai-review/caller.yml does, and auto-merge also needs contents: write. A job permissions block would either break callers that grant contents: read or take away write.
     # Long enough, with auto-merge, to wait for the slowest CI on the head.
     timeout-minutes: ${{ inputs.auto-merge && 120 || 15 }}
     # A label event gets its own group, so adding the label does not cancel a review that is still running. A

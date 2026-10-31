@@ -118,7 +118,8 @@ export function gitHub(token: string, repository: string) {
       return paginateWrapped<CommitStatus>(`/repos/${repository}/commits/${sha}/status`, "statuses")
     },
 
-    // A user's role in the repository: admin, maintain, write, triage, read or none.
+    // A user's role in the repository: admin, maintain, write, triage or read, or empty for none. GitHub answers 200
+    // for a user who is no collaborator too, with read on a public repository and empty on a private one.
     async role(login: string) {
       const answer = (await (await request(`/repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`)).json()) as { role_name: string }
       return answer.role_name
