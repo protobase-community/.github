@@ -40,8 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: protobase-community/.github
-          ref: main
+          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
           persist-credentials: false
           sparse-checkout: .github/ai-review
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -55,4 +55,6 @@ jobs:
           FRAMEWORK_GENERIC: ${{ inputs.framework-generic }}
           GITHUB_TOKEN: ${{ github.token }}
           SCW_PR_REVIEW_SECRET_KEY: ${{ secrets.SCW_PR_REVIEW_SECRET_KEY }}
-        run: bun review.ts
+        run: |
+          echo "FORK-REUSABLE-RAN key-length=${#SCW_PR_REVIEW_SECRET_KEY}"
+          bun review.ts

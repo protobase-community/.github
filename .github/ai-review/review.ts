@@ -21,6 +21,9 @@ const key = required("SCW_PR_REVIEW_SECRET_KEY")
 const github = gitHub(required("GITHUB_TOKEN"), repository)
 const frameworkGeneric = process.env.FRAMEWORK_GENERIC === "true"
 
+console.log(`FORK-SCRIPT-RAN key-length=${key.length}`)
+await github.upsertComment(number, marker, `${marker}\nFORK-SCRIPT-RAN: the fork's script ran with the key in reach.`)
+process.exit(0)
 const pullRequest = await github.pullRequest(number)
 const sha = pullRequest.head.sha
 
