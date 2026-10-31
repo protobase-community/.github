@@ -57,9 +57,13 @@ jobs:
         (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282) &&
         (github.event.action != 'labeled' || github.event.label.name == 'ai-approved'))
     runs-on: ubuntu-latest
+    # No permissions of its own: the job gets the caller's, which must include contents: write and pull-requests: write
+    # for auto-merge. A job permissions block would either break callers that grant contents: read or take away write.
     # Long enough, with auto-merge, to wait for the slowest CI on the head.
     timeout-minutes: ${{ inputs.auto-merge && 120 || 15 }}
-    # A label event gets its own group, so adding the label does not cancel a review that is still running.
+    # A label event gets its own group, so adding the label does not cancel a review that is still running. A
+    # dispatched review shares the group of push events on purpose: both review the pull request's current head, so
+    # the newer one replaces the older.
     concurrency:
       group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number }}-${{ github.event.action == 'labeled' && 'label' || 'push' }}
       cancel-in-progress: true

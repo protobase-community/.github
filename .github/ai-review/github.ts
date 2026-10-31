@@ -46,12 +46,15 @@ export function gitHub(token: string, repository: string) {
     return response.text()
   }
 
-  // One page of a list the API wraps in an object, such as a commit's check runs. A longer list fails rather than
-  // being judged on its first page.
-  async function firstPage<T>(path: string, key: string) {
-    const answer = (await (await request(`${path}${path.includes("?") ? "&" : "?"}per_page=100`)).json()) as Record<string, unknown>
-    if (Number(answer.total_count) > 100) throw new Error(`GitHub lists ${answer.total_count} ${key} for ${path}, above the 100 read`)
-    return answer[key] as T[]
+  // Every page of a list the API wraps in an object under `key`, such as a commit's check runs.
+  async function paginateWrapped<T>(path: string, key: string) {
+    const items: T[] = []
+    for (let page = 1; ; page++) {
+      const answer = (await (await request(`${path}${path.includes("?") ? "&" : "?"}per_page=100&page=${page}`)).json()) as Record<string, unknown>
+      const batch = answer[key] as T[]
+      items.push(...batch)
+      if (batch.length < 100) return items
+    }
   }
 
   return {
@@ -104,16 +107,15 @@ export function gitHub(token: string, repository: string) {
     },
 
     workflowRuns(sha: string) {
-      return firstPage<WorkflowRun>(`/repos/${repository}/actions/runs?head_sha=${sha}`, "workflow_runs")
+      return paginateWrapped<WorkflowRun>(`/repos/${repository}/actions/runs?head_sha=${sha}`, "workflow_runs")
     },
 
     checkRuns(sha: string) {
-      return firstPage<CheckRun>(`/repos/${repository}/commits/${sha}/check-runs`, "check_runs")
+      return paginateWrapped<CheckRun>(`/repos/${repository}/commits/${sha}/check-runs`, "check_runs")
     },
 
-    async statuses(sha: string) {
-      const combined = (await (await request(`/repos/${repository}/commits/${sha}/status?per_page=100`)).json()) as { statuses: CommitStatus[] }
-      return combined.statuses
+    statuses(sha: string) {
+      return paginateWrapped<CommitStatus>(`/repos/${repository}/commits/${sha}/status`, "statuses")
     },
 
     // A user's role in the repository: admin, maintain, write, triage, read or none.
