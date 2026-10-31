@@ -9,8 +9,9 @@
 # access, whose head moved on while it waited, or that carries the do-not-merge label, and leaves a pull request with
 # a failed check open for a person. Taking do-not-merge off starts the merge again. A release, a pull request from
 # development into the default branch, is reviewed but never merged here: it needs a person's approval.
-# A merge needs both contents: write and pull-requests: write from the caller. This job asks for no permissions of
-# its own, so a caller without auto-merge keeps working with contents: read and pull-requests: write.
+# Auto-merge needs contents: write and pull-requests: write from the caller, and actions: read, checks: read and
+# statuses: read to wait for the other checks. This job asks for no permissions of its own, so a caller without
+# auto-merge keeps working with contents: read and pull-requests: write.
 #
 # Callers run it on pull_request_target, so a pull request from a fork gets a review too, with the Scaleway key in
 # reach. That is safe because nothing from the pull request ever runs: this job checks out only the review script
@@ -62,8 +63,9 @@ jobs:
         (github.event.action != 'unlabeled' || github.event.label.name == 'do-not-merge'))
     runs-on: ubuntu-latest
     # No permissions of its own: the job gets the caller's. Every caller grants pull-requests: write for the comment,
-    # as .github/ai-review/caller.yml does; auto-merge also needs contents: write. A permissions block here would
-    # either break the callers that grant contents: read or take write away from the ones that grant it.
+    # as .github/ai-review/caller.yml does; auto-merge also needs contents: write, and actions, checks and statuses
+    # read. A permissions block here would either break the callers that grant contents: read or take write away from
+    # the ones that grant it.
     # Long enough, with auto-merge, to wait for the slowest CI on the head.
     timeout-minutes: ${{ inputs.auto-merge && 120 || 15 }}
     # A label event gets its own group, so adding the label does not cancel a review that is still running. A
