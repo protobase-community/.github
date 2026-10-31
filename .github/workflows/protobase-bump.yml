@@ -1,12 +1,14 @@
-# Moves a template to the latest Protobase release and merges the move once the template's CI passes.
+# Moves a template to the latest Protobase release in a pull request, which the AI review merges once it finds no
+# issues and the template's CI passes.
 #
 # Every @protobase/* package gets the same specifier, the release's caret range (^<version>), and bun.lock follows. The change goes to one branch,
 # protobase-bump, so a template never has more than one bump pull request: a newer release replaces the branch
-# and the open pull request with it. A pull request whose CI fails stays open for a person.
+# and the open pull request with it. A pull request whose CI fails, or whose review finds an issue, stays open for a person.
 #
-# Pushes made with the default GITHUB_TOKEN start no pull_request runs, so this workflow starts the template's
-# CI with workflow_dispatch on the branch, waits for it and merges the pull request itself when it passes. The
-# template needs "Allow GitHub Actions to create and approve pull requests" on, so GITHUB_TOKEN may open one.
+# Pushes made with the default GITHUB_TOKEN start no pull_request runs, so this workflow starts the template's CI
+# and its AI review (ai-pr-review.yml, with auto-merge on) with workflow_dispatch, once for each head commit. The
+# review merges the pull request. The template needs "Allow GitHub Actions to create and approve pull requests"
+# on, so GITHUB_TOKEN may open one.
 name: protobase-bump
 
 on:
@@ -20,6 +22,10 @@ on:
         description: The template's CI workflow file, which must accept workflow_dispatch.
         type: string
         default: ci.yml
+      review-workflow:
+        description: The template's AI review caller, which must accept workflow_dispatch with a pr-number input.
+        type: string
+        default: ai-review.yml
       bun-version:
         description: The Bun that writes bun.lock; keep it the same as the template's CI.
         type: string
@@ -84,7 +90,7 @@ jobs:
           title="chore: protobase $TARGET"
           body="Moves the @protobase/* packages from $CURRENT to $TARGET. What changed: https://github.com/PrototeamHQ/protobase/releases
 
-          This pull request merges itself when CI passes. When CI fails it stays open for a person, until a newer release replaces it."
+          This pull request merges itself once its AI review finds no issues and CI passes. Otherwise it stays open for a person, until a newer release replaces it."
           number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -n "$number" ]; then
             gh pr edit "$number" --title "$title" --body "$body"
@@ -92,9 +98,10 @@ jobs:
             gh pr create --head "$BRANCH" --title "$title" --body "$body"
           fi
 
-      - name: Merge the open bump pull request when CI passes
+      - name: Start CI and the AI review on the open bump pull request
         env:
           CI_WORKFLOW: ${{ inputs.ci-workflow }}
+          REVIEW_WORKFLOW: ${{ inputs.review-workflow }}
         run: |
           read -r number sha <<< "$(gh pr list --head "$BRANCH" --state open --json number,headRefOid --jq '.[0] // empty | "\(.number) \(.headRefOid)"')"
           if [ -z "$number" ]; then
@@ -102,26 +109,13 @@ jobs:
             exit 0
           fi
 
-          ci_run() {
-            gh run list --workflow "$CI_WORKFLOW" --commit "$sha" --limit 1 --json databaseId --jq '.[0].databaseId // empty'
-          }
-
-          run=$(ci_run)
-          if [ -z "$run" ]; then
+          # Only a dispatched CI run counts: the pull_request runs of a GITHUB_TOKEN push wait for an approval and never run.
+          ci_run=$(gh run list --workflow "$CI_WORKFLOW" --commit "$sha" --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -z "$ci_run" ]; then
             gh workflow run "$CI_WORKFLOW" --ref "$BRANCH"
-            for _ in $(seq 30); do
-              sleep 10
-              run=$(ci_run)
-              [ -n "$run" ] && break
-            done
-          fi
-          if [ -z "$run" ]; then
-            echo "::error::$CI_WORKFLOW did not start on $sha."
-            exit 1
           fi
 
-          if ! gh run watch "$run" --exit-status --interval 30 > /dev/null; then
-            echo "::warning::CI did not pass on pull request #$number; it stays open for a person."
-            exit 0
+          # The review runs on the default branch, so it is found by its comment, which names the commit it reviewed.
+          if ! gh api "repos/$GH_REPO/issues/$number/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]") | .body' | grep -q "<!-- reviewed $sha "; then
+            gh workflow run "$REVIEW_WORKFLOW" -f pr-number="$number"
           fi
-          gh pr merge "$number" --squash --match-head-commit "$sha" --delete-branch
