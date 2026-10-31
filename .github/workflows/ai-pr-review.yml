@@ -79,7 +79,7 @@ jobs:
     timeout-minutes: 15
     # Label events and CI runs get groups of their own, so neither cancels a review that is still running. A
     # dispatched review shares the group of push events on purpose: both review the pull request's current head, so
-    # the newer one replaces the older.
+    # the newer one replaces the older. pr-number defaults to 0, which is falsy in an expression, so || falls through.
     concurrency:
       group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number || github.event.workflow_run.head_branch }}-${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && 'label' || github.event_name == 'workflow_run' && 'checks' || 'push' }}
       cancel-in-progress: true

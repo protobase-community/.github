@@ -29,10 +29,12 @@ function stop(reason: string): never {
   process.exit(0)
 }
 
-// A CI run started with workflow_dispatch names no pull request, so its branch finds the open one.
-const number = process.env.PR_NUMBER
-  ? Number(process.env.PR_NUMBER)
-  : ((await github.openPullRequest(required("HEAD_BRANCH"))) ?? stop(`no open pull request has the head ${process.env.HEAD_BRANCH}`))
+// A CI run started with workflow_dispatch names no pull request, so its branch finds the open one. 0 names none either.
+const given = Number(process.env.PR_NUMBER || 0)
+const number =
+  given > 0
+    ? given
+    : ((await github.openPullRequest(required("HEAD_BRANCH"))) ?? stop(`no open pull request has the head ${process.env.HEAD_BRANCH}`))
 
 const writers = new Set(["admin", "maintain", "write"])
 // github-actions opens the protobase bump pull requests. It is no collaborator, and only this repository's own
