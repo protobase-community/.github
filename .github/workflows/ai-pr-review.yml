@@ -28,7 +28,7 @@ jobs:
     if: >-
       !github.event.pull_request.draft &&
       github.event.pull_request.state == 'open' &&
-      github.event.pull_request.user.type != 'Bot'
+      (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.login == 'github-actions[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
