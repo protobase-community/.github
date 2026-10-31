@@ -49,6 +49,7 @@ export async function complete(key: string, system: string, user: string): Promi
     for (const line of lines) {
       if (!line.startsWith("data: ") || line === "data: [DONE]") continue
       const event = JSON.parse(line.slice(6))
+      if (event.error || event.object === "error") throw new Error("Scaleway sent an error in the response stream")
       if (event.usage) usage = event.usage
       const choice = event.choices?.[0]
       if (!choice) continue
@@ -56,5 +57,7 @@ export async function complete(key: string, system: string, user: string): Promi
       if (choice.finish_reason) finish = choice.finish_reason
     }
   }
+  // A stream that ends without a finish reason was cut off, so its answer is not a review.
+  if (!finish) throw new Error("Scaleway ended the response stream without finishing")
   return { content, finish, usage }
 }

@@ -1,7 +1,7 @@
 // The model and request settings for every AI review. Switching models is a change to `model` alone.
 // Settings come from the Scaleway review benchmark: temperature 0.6, a 16k output cap and high reasoning effort.
 export const settings = {
-  model: "qwen3.5-397b-a17b",
+  model: "qwen3.6-35b-a3b",
   provider: "Scaleway",
   endpoint: "https://api.scaleway.ai/v1/chat/completions",
   temperature: 0.6,
