@@ -9,8 +9,9 @@ export const settings = {
   reasoningEffort: "high",
 }
 
-// What a review may send. A pull request above the cap is skipped with a short note instead of being trimmed,
-// because a review of half a change reads as a review of all of it.
+// What a review may send. Above maxInputChars, full file contents are left out until the whole diff fits; a pull
+// request whose diff alone is above it is skipped with a short note, because a review of half a change reads as a
+// review of all of it.
 export const limits = {
   maxFiles: 150,
   maxInputChars: 300_000,
