@@ -7,7 +7,7 @@ export const marker = "<!-- ai-pr-review -->"
 type Verdict = "clean" | "findings" | "skipped"
 
 function header(sha: string, verdict: Verdict) {
-  return `${marker}\n<!-- reviewed ${sha} ${verdict} -->\n**AI review** by \`${settings.model}\` on ${settings.provider}, of ${sha.slice(0, 7)}. An AI wrote this comment: it is advisory, can be wrong and never blocks a merge.`
+  return `${marker}\n<!-- reviewed ${sha} ${verdict} -->\n**AI review** by \`${settings.model}\`, of ${sha.slice(0, 7)}. An AI wrote this comment: it is advisory, can be wrong and never blocks a merge.`
 }
 
 export function reviewComment(sha: string, review: string) {
