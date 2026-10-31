@@ -6,7 +6,8 @@
 # a new review, but a head that only merged the base branch in, as "Update branch" does, keeps its approval and is
 # merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review. It
 # never merges a pull request whose head is in another repository or a deleted fork, from an author without write
-# access, or whose head moved on while it waited, and leaves a pull request with a failed check open for a person.
+# access, whose head moved on while it waited, or that carries the do-not-merge label, and leaves a pull request with
+# a failed check open for a person. Taking do-not-merge off starts the merge again.
 # A merge needs both contents: write and pull-requests: write from the caller. This job asks for no permissions of
 # its own, so a caller without auto-merge keeps working with contents: read and pull-requests: write.
 #
@@ -49,14 +50,15 @@ on:
 jobs:
   review:
     # Bots are skipped, except github-actions (user id 41898282, login github-actions[bot]), which opens the protobase
-    # bump pull requests. Of label events only the approval label's count. Every pull_request_target event, labeled
+    # bump pull requests. Of label events only adding the approval label and taking the hold label off count. Every pull_request_target event, labeled
     # too, carries github.event.pull_request; only workflow_dispatch has none, so it is checked first.
     if: >-
       github.event_name == 'workflow_dispatch' || (
         !github.event.pull_request.draft &&
         github.event.pull_request.state == 'open' &&
         (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282) &&
-        (github.event.action != 'labeled' || github.event.label.name == 'ai-approved'))
+        (github.event.action != 'labeled' || github.event.label.name == 'ai-approved') &&
+        (github.event.action != 'unlabeled' || github.event.label.name == 'do-not-merge'))
     runs-on: ubuntu-latest
     # No permissions of its own: the job gets the caller's. Every caller grants pull-requests: write for the comment,
     # as .github/ai-review/caller.yml does; auto-merge also needs contents: write. A permissions block here would
@@ -67,7 +69,7 @@ jobs:
     # dispatched review shares the group of push events on purpose: both review the pull request's current head, so
     # the newer one replaces the older.
     concurrency:
-      group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number }}-${{ github.event.action == 'labeled' && 'label' || 'push' }}
+      group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number }}-${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && 'label' || 'push' }}
       cancel-in-progress: true
     env:
       PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
@@ -82,7 +84,7 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      - if: github.event.action != 'labeled'
+      - if: github.event.action != 'labeled' && github.event.action != 'unlabeled'
         working-directory: .github/ai-review
         env:
           REPOSITORY: ${{ github.repository }}
