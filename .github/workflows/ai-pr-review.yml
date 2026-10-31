@@ -44,6 +44,12 @@ on:
         description: The pull request to review when the caller runs on workflow_dispatch.
         type: number
         default: 0
+      runs-on:
+        description: >-
+          The runner label for the job, such as hetzner-vm for PrototeamHQ's private repositories, whose GitHub-hosted
+          minutes are billed. Public repositories run free on ubuntu-latest.
+        type: string
+        default: ubuntu-latest
     secrets:
       SCW_PR_REVIEW_SECRET_KEY:
         description: The restricted Scaleway key of the github-pr-review application.
@@ -61,7 +67,7 @@ jobs:
         (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282) &&
         (github.event.action != 'labeled' || github.event.label.name == 'ai-approved') &&
         (github.event.action != 'unlabeled' || github.event.label.name == 'do-not-merge'))
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     # No permissions of its own: the job gets the caller's. Every caller grants pull-requests: write for the comment,
     # as .github/ai-review/caller.yml does; auto-merge also needs contents: write, and actions, checks and statuses
     # read. A permissions block here would either break the callers that grant contents: read or take write away from
