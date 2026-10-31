@@ -21,7 +21,7 @@ async function send(key: string, body: string) {
 
 export type Completion = { content: string; finish: string | null; usage: unknown }
 
-export async function complete(key: string, system: string, user: string, effort = settings.reasoningEffort): Promise<Completion> {
+export async function complete(key: string, system: string, user: string, effort: string = settings.reasoningEffort): Promise<Completion> {
   const body = JSON.stringify({
     model: settings.model,
     messages: [
