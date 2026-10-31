@@ -1,11 +1,12 @@
 // The model and request settings for every AI review. Switching models is a change to `model` alone.
-// Settings come from the Scaleway review benchmark: temperature 0.6, a 16k output cap and high reasoning effort.
+// Settings come from the Scaleway review benchmark: temperature 0.6 and high reasoning effort. The output cap is
+// Scaleway's 32k maximum for this model, because on a big pull request high effort can reason past 16k.
 export const settings = {
   model: "qwen3.6-35b-a3b",
   provider: "Scaleway",
   endpoint: "https://api.scaleway.ai/v1/chat/completions",
   temperature: 0.6,
-  maxTokens: 16000,
+  maxTokens: 32000,
   reasoningEffort: "high",
 }
 
