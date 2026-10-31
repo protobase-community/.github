@@ -1,0 +1,58 @@
+# Posts one advisory AI review comment on a pull request and updates it on every push. It never blocks a merge.
+#
+# Callers run it on pull_request_target, so a pull request from a fork gets a review too, with the Scaleway key in
+# reach. That is safe because nothing from the pull request ever runs: this job checks out only the review script
+# from this repository's main branch, and the script reads the pull request's diff and files through the GitHub
+# API as data. pull_request_target also runs the caller workflow from the base branch, and the caller pins this
+# workflow to main, so a pull request that edits either one, or the script, is reviewed by the merged version.
+# The model gets no tools; its answer is only posted as a comment.
+#
+# The model and its settings live in .github/ai-review/settings.ts. The caller to copy into a repository is
+# .github/ai-review/caller.yml.
+name: ai-pr-review
+
+on:
+  workflow_call:
+    inputs:
+      framework-generic:
+        description: Add the checks that framework library code stays generic, for Protobase itself.
+        type: boolean
+        default: false
+    secrets:
+      SCW_PR_REVIEW_SECRET_KEY:
+        description: The restricted Scaleway key of the github-pr-review application.
+        required: true
+
+jobs:
+  review:
+    if: >-
+      !github.event.pull_request.draft &&
+      github.event.pull_request.state == 'open' &&
+      github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: ai-pr-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: protobase-community/.github
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/ai-review
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - working-directory: .github/ai-review
+        env:
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          FRAMEWORK_GENERIC: ${{ inputs.framework-generic }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SCW_PR_REVIEW_SECRET_KEY: ${{ secrets.SCW_PR_REVIEW_SECRET_KEY }}
+        run: bun review.ts
