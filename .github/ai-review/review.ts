@@ -6,7 +6,7 @@ import { marker, reviewComment, skipComment } from "./comment"
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
 import { buildUserMessage, contentPaths } from "./pull-request"
-import { complete } from "./scaleway"
+import { completeAnswer } from "./scaleway"
 import { limits } from "./settings"
 
 function required(name: string) {
@@ -69,7 +69,7 @@ const system = buildSystemPrompt(await loadTemplates(), {
   rules: await rules(),
 })
 
-const completion = await complete(key, system, user)
+const completion = await completeAnswer(key, system, user)
 console.log(`finish=${completion.finish} usage=${JSON.stringify(completion.usage)}`)
 
 const body =

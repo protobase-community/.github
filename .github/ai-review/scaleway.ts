@@ -61,3 +61,10 @@ export async function complete(key: string, system: string, user: string): Promi
   if (!finish) throw new Error("Scaleway ended the response stream without finishing")
   return { content, finish, usage }
 }
+
+// The model sometimes answers with nothing, whether it ran out of budget or stopped early, so an empty answer is asked for once more.
+export async function completeAnswer(key: string, system: string, user: string) {
+  const completion = await complete(key, system, user)
+  if (completion.content.trim()) return completion
+  return complete(key, system, user)
+}
