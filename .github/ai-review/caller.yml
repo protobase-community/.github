@@ -14,8 +14,11 @@ on:
         type: number
 
 permissions:
+  actions: read
+  checks: read
   contents: write
   pull-requests: write
+  statuses: read
 
 jobs:
   review:
