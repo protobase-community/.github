@@ -1,8 +1,9 @@
 // The GitHub REST calls a review and its auto-merge make. They read the pull request as data; the review writes only
-// its one comment and the approval label, and the auto-merge only merges.
+// its one comment, the approval label and the approval status, and the auto-merge only merges.
 import type { ComparedFile } from "./approval"
 import type { CheckRun, CommitStatus, WorkflowRun } from "./checks"
 import type { ChangedFile } from "./pull-request"
+import { reviewStatusContext } from "./settings"
 
 const api = "https://api.github.com"
 
@@ -123,6 +124,22 @@ export function gitHub(token: string, repository: string) {
       return paginateWrapped<CommitStatus>(`/repos/${repository}/commits/${sha}/status`, "statuses")
     },
 
+    // Whether the review found no issues in a commit: the newest ai-review status from github-actions on it is a
+    // success. A status anyone else set under that name does not count.
+    async reviewApproved(sha: string) {
+      const statuses = await paginate<CommitStatus & { creator: { login: string } | null }>(
+        `/repos/${repository}/commits/${sha}/statuses`,
+        Number.POSITIVE_INFINITY,
+      )
+      const own = statuses.find((status) => status.context === reviewStatusContext && status.creator?.login === "github-actions[bot]")
+      return own?.state === "success"
+    },
+
+    async approveCommit(sha: string) {
+      const body = JSON.stringify({ state: "success", context: reviewStatusContext, description: "The AI review found no issues." })
+      await request(`/repos/${repository}/statuses/${sha}`, { method: "POST", body })
+    },
+
     // A user's role in the repository: admin, maintain, write, triage or read, or empty for none. GitHub answers 200
     // for a user who is no collaborator too, with read on a public repository and empty on a private one.
     async role(login: string) {
@@ -135,7 +152,11 @@ export function gitHub(token: string, repository: string) {
       await request(`/repos/${repository}/pulls/${number}/merge`, { method: "PUT", body: JSON.stringify({ sha, merge_method: method }) })
     },
 
-    reviewComment,
+    // Edits the review's comment if there is one, and posts none otherwise. An edit sends no email.
+    async editComment(number: number, marker: string, body: string) {
+      const existing = await reviewComment(number, marker)
+      if (existing) await request(`/repos/${repository}/issues/comments/${existing.id}`, { method: "PATCH", body: JSON.stringify({ body }) })
+    },
 
     async upsertComment(number: number, marker: string, body: string) {
       const existing = await reviewComment(number, marker)

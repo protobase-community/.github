@@ -1,12 +1,15 @@
 // Reviews one pull request with the AI model and posts or updates its advisory comment.
 // It reads the pull request only through the GitHub API, as data, and never checks out or runs its code.
 //
-// With AUTO_MERGE=true a review that finds no issues also puts the approval label on, and any other review takes it
-// off. A head that still carries an earlier approval, because it only merged the base branch in, is not reviewed again.
+// A review that finds no issues puts the approval label on instead of posting a comment, because a new comment
+// emails the maintainer and would add nothing; it edits an earlier comment, if any, so old findings do not linger.
+// Any other review takes the label off. With AUTO_MERGE=true a review that finds no issues also records that in a
+// commit status, which the auto-merge reads, and a head that still carries an earlier approval, because it only
+// merged the base branch in, is not reviewed again.
 //
 //   REPOSITORY=owner/name PR_NUMBER=1 GITHUB_TOKEN=... SCW_PR_REVIEW_SECRET_KEY=... [AUTO_MERGE=true] bun review.ts
 import { carriesApproval } from "./approval"
-import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comment"
+import { isClean, marker, noIssuesComment, reviewComment, skipComment } from "./comment"
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
 import { contentPaths, fitUserMessage } from "./pull-request"
@@ -35,14 +38,11 @@ if (pullRequest.state !== "open" || pullRequest.draft) {
   process.exit(0)
 }
 
-if (autoMerge) {
-  const approved = approvedSha((await github.reviewComment(number, marker))?.body ?? "")
-  if (approved !== null && (await carriesApproval(github, sha, approved, pullRequest.base.ref))) {
-    console.log(`Not reviewed again: ${sha.slice(0, 7)} carries the approval of ${approved.slice(0, 7)}.`)
-    process.exit(0)
-  }
-  if (pullRequest.labels.some((label) => label.name === approvedLabel)) await github.removeLabel(number, approvedLabel)
+if (autoMerge && (await carriesApproval(github, sha, github.reviewApproved, pullRequest.base.ref))) {
+  console.log(`Not reviewed again: ${sha.slice(0, 7)} carries an earlier approval.`)
+  process.exit(0)
 }
+if (pullRequest.labels.some((label) => label.name === approvedLabel)) await github.removeLabel(number, approvedLabel)
 
 if (pullRequest.changed_files > limits.maxFiles) {
   await github.upsertComment(number, marker, skipComment(sha, `it changes ${pullRequest.changed_files} files, above the cap of ${limits.maxFiles}.`))
@@ -92,9 +92,12 @@ const system = buildSystemPrompt(await loadTemplates(), {
 const completion = await completeAnswer(key, system, user)
 console.log(`finish=${completion.finish} usage=${JSON.stringify(completion.usage)}`)
 
-const body =
-  completion.finish === "length" && !completion.content.trim()
-    ? skipComment(sha, "the model used its whole output budget before answering.")
-    : reviewComment(sha, completion.content)
-await github.upsertComment(number, marker, body)
-if (autoMerge && isClean(completion.content)) await github.addLabel(number, approvedLabel)
+if (completion.finish === "length" && !completion.content.trim()) {
+  await github.upsertComment(number, marker, skipComment(sha, "the model used its whole output budget before answering."))
+} else if (isClean(completion.content)) {
+  if (autoMerge) await github.approveCommit(sha)
+  await github.editComment(number, marker, noIssuesComment(sha))
+  await github.addLabel(number, approvedLabel)
+} else {
+  await github.upsertComment(number, marker, reviewComment(sha, completion.content))
+}

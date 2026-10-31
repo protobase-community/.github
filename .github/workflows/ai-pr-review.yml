@@ -1,7 +1,11 @@
-# Posts one advisory AI review comment on a pull request and updates it on every push. It never blocks a merge.
+# Posts one advisory AI review comment on a pull request and updates it on every push. It never blocks a merge. A
+# review that finds no issues posts no comment, since a new comment emails the maintainer: it puts the ai-approved
+# label on instead, and edits an earlier comment, if any, to say the head has no issues. Any other review takes the
+# label off. Without auto-merge the label is only for people.
 #
-# With auto-merge on, a review that finds no issues puts the ai-approved label on the pull request, and the same job
-# then waits for every other check on the head to pass and merges it with GITHUB_TOKEN (.github/ai-review/merge.ts).
+# With auto-merge on, a review that finds no issues also records that as an ai-review commit status on the head,
+# which only github-actions' own status counts for, and the same job then waits for every other check on the head to
+# pass and merges it with GITHUB_TOKEN (.github/ai-review/merge.ts).
 # A merge with GITHUB_TOKEN starts no workflow on the base branch. Any other new commit takes the label off and gets
 # a new review, but a head that only merged the base branch in, as "Update branch" does, keeps its approval and is
 # merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review. It
@@ -9,8 +13,8 @@
 # access, whose head moved on while it waited, or that carries the do-not-merge label, and leaves a pull request with
 # a failed check open for a person. Taking do-not-merge off starts the merge again. A release, a pull request from
 # development into the default branch, is reviewed but never merged here: it needs a person's approval.
-# Auto-merge needs contents: write and pull-requests: write from the caller, and actions: read, checks: read and
-# statuses: read to wait for the other checks. This job asks for no permissions of its own, so a caller without
+# Auto-merge needs contents: write, pull-requests: write and statuses: write from the caller, and actions: read and
+# checks: read to wait for the other checks. This job asks for no permissions of its own, so a caller without
 # auto-merge keeps working with contents: read and pull-requests: write.
 #
 # Callers run it on pull_request_target, so a pull request from a fork gets a review too, with the Scaleway key in
@@ -69,9 +73,9 @@ jobs:
         (github.event.action != 'unlabeled' || github.event.label.name == 'do-not-merge'))
     runs-on: ${{ inputs.runs-on }}
     # No permissions of its own: the job gets the caller's. Every caller grants pull-requests: write for the comment,
-    # as .github/ai-review/caller.yml does; auto-merge also needs contents: write, and actions, checks and statuses
-    # read. A permissions block here would either break the callers that grant contents: read or take write away from
-    # the ones that grant it.
+    # as .github/ai-review/caller.yml does; auto-merge also needs contents: write and statuses: write, and actions and
+    # checks read. A permissions block here would either break the callers that grant contents: read or take write
+    # away from the ones that grant it.
     # Long enough, with auto-merge, to wait for the slowest CI on the head.
     timeout-minutes: ${{ inputs.auto-merge && 120 || 15 }}
     # A label event gets its own group, so adding the label does not cancel a review that is still running. A

@@ -15,12 +15,13 @@ on:
         type: number
 
 # Merging a pull request takes contents: write: https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps#repository-permissions-for-contents
+# Recording a clean review as a commit status takes statuses: write.
 permissions:
   actions: read
   checks: read
   contents: write
   pull-requests: write
-  statuses: read
+  statuses: write
 
 jobs:
   review:

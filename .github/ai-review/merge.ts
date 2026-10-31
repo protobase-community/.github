@@ -7,7 +7,6 @@
 //   REPOSITORY=owner/name PR_NUMBER=1 MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
 import { carriesApproval } from "./approval"
 import { checksState } from "./checks"
-import { approvedSha, marker } from "./comment"
 import { gitHub } from "./github"
 import { approvedLabel, holdLabel, releaseBranch } from "./settings"
 
@@ -47,8 +46,7 @@ async function refusal(sha: string) {
   const author = pullRequest.user.login
   if (author !== workflowAuthor && !writers.has(await github.role(author))) return `its author ${author} cannot write to the repository`
 
-  const approved = approvedSha((await github.reviewComment(number, marker))?.body ?? "")
-  if (approved === null || !(await carriesApproval(github, sha, approved, pullRequest.base.ref)))
+  if (!(await carriesApproval(github, sha, github.reviewApproved, pullRequest.base.ref)))
     return `its head ${sha.slice(0, 7)} has no AI review that found no issues`
   return null
 }
