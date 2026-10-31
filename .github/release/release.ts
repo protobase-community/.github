@@ -32,6 +32,9 @@ const deployedUrl = process.env.DEPLOYED_URL || null
 const github = gitHub(required("GITHUB_TOKEN"), repository)
 
 const base = await github.defaultBranch()
+// With nothing on development that the default branch lacks, there is nothing to release, ask about or merge: its
+// pull request, if one is open, has no changes, and an approval of an earlier head is never merged, since only the
+// pull request's head is.
 const commits = await github.commitsAhead(base, development)
 if (commits.length === 0) {
   console.log(`${development} has nothing that ${base} does not have.`)
