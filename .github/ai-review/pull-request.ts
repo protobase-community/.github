@@ -49,6 +49,7 @@ export function buildUserMessage(
   files: ChangedFile[],
   contents: Map<string, string>,
   tooLarge: string[],
+  leftOutToFit: string[],
 ) {
   const omitted = omittedFiles(files)
   const sections = [
@@ -63,9 +64,34 @@ export function buildUserMessage(
   if (tooLarge.length > 0) {
     sections.push(`## Contents left out\n\nThese files are too large to send whole; only their diff is above:\n${tooLarge.map((path) => `- ${path}`).join("\n")}`)
   }
+  if (leftOutToFit.length > 0) {
+    sections.push(`## Contents left out to fit\n\nThe pull request is too large to send every changed file whole, so these files are sent only as their diff above:\n${leftOutToFit.map((path) => `- ${path}`).join("\n")}`)
+  }
   const fileSections = [...contents].map(([path, text]) => `### ${path}\n\n\`\`\`\n${text}\n\`\`\``)
   if (fileSections.length > 0) {
     sections.push(`## Full contents of the changed files at the head commit\n\n${fileSections.join("\n\n")}`)
   }
   return sections.join("\n\n")
+}
+
+// The user message, fitted under maxChars. The whole diff always goes. When the message is too large, full
+// contents are left out, largest first, and named as diff only. The result is still above maxChars only when
+// the diff alone is, and then the caller skips the review.
+export function fitUserMessage(
+  pullRequest: PullRequest,
+  files: ChangedFile[],
+  contents: Map<string, string>,
+  tooLarge: string[],
+  maxChars: number,
+) {
+  const kept = new Map(contents)
+  const leftOut: string[] = []
+  const largestFirst = [...contents].sort(([, a], [, b]) => b.length - a.length).map(([path]) => path)
+  for (;;) {
+    const message = buildUserMessage(pullRequest, files, kept, tooLarge, leftOut)
+    const largest = largestFirst.shift()
+    if (message.length <= maxChars || largest === undefined) return { message, leftOut }
+    kept.delete(largest)
+    leftOut.push(largest)
+  }
 }

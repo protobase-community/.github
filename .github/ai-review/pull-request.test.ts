@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildUserMessage, contentPaths, omittedFiles, reviewedFiles } from "./pull-request"
+import { buildUserMessage, contentPaths, fitUserMessage, omittedFiles, reviewedFiles } from "./pull-request"
 
 const files = [
   { filename: "src/app.ts", status: "modified", patch: "@@ -1 +1 @@\n-a\n+b" },
@@ -34,6 +34,7 @@ describe("buildUserMessage", () => {
     files,
     new Map([["src/app.ts", "b\n"]]),
     ["src/big.ts"],
+    [],
   )
 
   test("holds the title, the diff, the omitted files and the contents", () => {
@@ -44,5 +45,54 @@ describe("buildUserMessage", () => {
     expect(message).toContain("- logo.png")
     expect(message).toContain("- src/big.ts")
     expect(message).toContain("### src/app.ts\n\n```\nb\n\n```")
+    expect(message).not.toContain("## Contents left out to fit")
+  })
+})
+
+describe("fitUserMessage", () => {
+  const pullRequest = { title: "feat: three files", body: null }
+  const code = [
+    { filename: "src/a.ts", status: "modified", patch: "@@ -1 +1 @@\n-a\n+A" },
+    { filename: "src/b.ts", status: "modified", patch: "@@ -1 +1 @@\n-b\n+B" },
+    { filename: "src/c.ts", status: "added", patch: "@@ -0,0 +1 @@\n+C" },
+  ]
+  const contents = new Map([
+    ["src/a.ts", "a".repeat(1000)],
+    ["src/b.ts", "b".repeat(3000)],
+    ["src/c.ts", "c".repeat(2000)],
+  ])
+  const whole = buildUserMessage(pullRequest, code, contents, [], [])
+  const diffOnly = buildUserMessage(pullRequest, code, new Map(), [], ["src/b.ts", "src/c.ts", "src/a.ts"])
+
+  test("sends everything when it fits", () => {
+    expect(fitUserMessage(pullRequest, code, contents, [], whole.length)).toEqual({ message: whole, leftOut: [] })
+  })
+
+  test("leaves out the largest contents first, keeps the whole diff and names what is diff only", () => {
+    const { message, leftOut } = fitUserMessage(pullRequest, code, contents, [], whole.length - 1000)
+    expect(leftOut).toEqual(["src/b.ts"])
+    expect(message.length).toBeLessThanOrEqual(whole.length - 1000)
+    for (const file of code) expect(message).toContain(file.patch)
+    expect(message).toContain("## Contents left out to fit")
+    expect(message).toContain("- src/b.ts")
+    expect(message).not.toContain("### src/b.ts")
+    expect(message).toContain("### src/a.ts")
+    expect(message).toContain("### src/c.ts")
+  })
+
+  test("leaves out more contents until it fits", () => {
+    expect(fitUserMessage(pullRequest, code, contents, [], whole.length - 4000).leftOut).toEqual(["src/b.ts", "src/c.ts"])
+  })
+
+  test("sends the diff alone when only that fits", () => {
+    expect(fitUserMessage(pullRequest, code, contents, [], diffOnly.length)).toEqual({
+      message: diffOnly,
+      leftOut: ["src/b.ts", "src/c.ts", "src/a.ts"],
+    })
+  })
+
+  test("stays above the cap only when the diff alone is above it, for the caller to skip", () => {
+    const { message } = fitUserMessage(pullRequest, code, contents, [], diffOnly.length - 1)
+    expect(message).toBe(diffOnly)
   })
 })

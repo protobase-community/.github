@@ -5,7 +5,7 @@
 import { marker, reviewComment, skipComment } from "./comment"
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
-import { buildUserMessage, contentPaths } from "./pull-request"
+import { contentPaths, fitUserMessage } from "./pull-request"
 import { completeAnswer } from "./scaleway"
 import { limits } from "./settings"
 
@@ -39,10 +39,10 @@ for (const path of contentPaths(files)) {
   else contents.set(path, text)
 }
 
-const user = buildUserMessage(pullRequest, files, contents, tooLarge)
+const { message: user } = fitUserMessage(pullRequest, files, contents, tooLarge, limits.maxInputChars)
 if (user.length > limits.maxInputChars) {
   const size = `${Math.round(user.length / 1000)}k characters`
-  await github.upsertComment(number, marker, skipComment(sha, `the diff and changed files come to ${size}, above the cap of ${limits.maxInputChars / 1000}k.`))
+  await github.upsertComment(number, marker, skipComment(sha, `its diff alone comes to ${size}, above the cap of ${limits.maxInputChars / 1000}k.`))
   process.exit(0)
 }
 
