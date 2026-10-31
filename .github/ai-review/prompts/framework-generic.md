@@ -8,3 +8,4 @@ Protobase is a framework, so library code (everything under packages/) must serv
 4. Prefer extension points (declared config, relations, field types, hooks, slots) over app branches. When library code needs to know something about an app's schema, the app must declare it.
 
 Quote the exact file and line for each such finding.
+Work through the diff file by file, from the first file to the last, and run the four checks above on every changed library file before you write your answer. Do not stop after the first findings: a problem in the last file counts as much as one in the first.

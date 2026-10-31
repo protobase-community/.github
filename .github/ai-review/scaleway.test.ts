@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { complete } from "./scaleway"
+import { complete, completeAnswer } from "./scaleway"
 
 const realFetch = globalThis.fetch
 afterEach(() => {
@@ -32,5 +32,35 @@ describe("complete", () => {
   test("fails on a refused request", async () => {
     globalThis.fetch = (async () => new Response("denied", { status: 403 })) as unknown as typeof fetch
     await expect(complete("key", "system", "user")).rejects.toThrow("Scaleway answered 403")
+  })
+})
+
+describe("completeAnswer", () => {
+  function answers(...contents: string[]) {
+    const bodies = contents.map(
+      (content) =>
+        `data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: content ? "stop" : "length" }] })}\n\ndata: [DONE]\n\n`,
+    )
+    let calls = 0
+    globalThis.fetch = (async () => new Response(bodies[calls++])) as unknown as typeof fetch
+    return () => calls
+  }
+
+  test("asks once when the first answer has text", async () => {
+    const calls = answers("No issues found.")
+    expect((await completeAnswer("key", "system", "user")).content).toBe("No issues found.")
+    expect(calls()).toBe(1)
+  })
+
+  test("asks again once after an empty answer", async () => {
+    const calls = answers("  ", "No issues found.")
+    expect((await completeAnswer("key", "system", "user")).content).toBe("No issues found.")
+    expect(calls()).toBe(2)
+  })
+
+  test("returns the second empty answer without asking a third time", async () => {
+    const calls = answers("", "", "never sent")
+    expect((await completeAnswer("key", "system", "user")).content).toBe("")
+    expect(calls()).toBe(2)
   })
 })

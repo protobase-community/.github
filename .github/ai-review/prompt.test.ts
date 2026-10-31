@@ -18,6 +18,7 @@ describe("buildSystemPrompt", () => {
     const prompt = buildSystemPrompt(templates, { repository: "acme/framework", description: null, frameworkGeneric: true, rules })
     expect(prompt).toContain("## Framework code stays generic")
     expect(prompt).toContain("Put the generic-framework findings first.")
+    expect(prompt).toContain("Quote the exact file and line for each such finding.\nWork through the diff file by file")
     expect(prompt).toStartWith("You are a senior reviewer of pull requests to acme/framework. ")
   })
 
