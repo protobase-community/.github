@@ -1,11 +1,22 @@
 # Posts one advisory AI review comment on a pull request and updates it on every push. It never blocks a merge.
 #
+# With auto-merge on, a review that finds no issues puts the ai-approved label on the pull request, and the same job
+# then waits for every other check on the head to pass and merges it with GITHUB_TOKEN (.github/ai-review/merge.ts).
+# A merge with GITHUB_TOKEN starts no workflow on the base branch. Any other new commit takes the label off and gets
+# a new review, but a head that only merged the base branch in, as "Update branch" does, keeps its approval and is
+# merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review. It
+# never merges a pull request whose head is in another repository or a deleted fork, from an author without write
+# access, or whose head moved on while it waited, and leaves a pull request with a failed check open for a person.
+# A merge needs both contents: write and pull-requests: write from the caller. This job asks for no permissions of
+# its own, so a caller without auto-merge keeps working with contents: read and pull-requests: write.
+#
 # Callers run it on pull_request_target, so a pull request from a fork gets a review too, with the Scaleway key in
 # reach. That is safe because nothing from the pull request ever runs: this job checks out only the review script
 # from this repository's main branch, and the script reads the pull request's diff and files through the GitHub
 # API as data. pull_request_target also runs the caller workflow from the base branch, and the caller pins this
 # workflow to main, so a pull request that edits either one, or the script, is reviewed by the merged version.
-# The model gets no tools; its answer is only posted as a comment.
+# The model gets no tools; its answer is only posted as a comment. A caller can also run it with workflow_dispatch
+# and a pull request number, as the protobase bump does for its pull requests, whose events start no workflow.
 #
 # The model and its settings live in .github/ai-review/settings.ts. The caller to copy into a repository is
 # .github/ai-review/caller.yml.
@@ -18,6 +29,18 @@ on:
         description: Add the checks that framework library code stays generic, for Protobase itself.
         type: boolean
         default: false
+      auto-merge:
+        description: Merge the pull request once its review finds no issues and every other check passed.
+        type: boolean
+        default: false
+      merge-method:
+        description: How auto-merge merges, squash or merge.
+        type: string
+        default: squash
+      pr-number:
+        description: The pull request to review when the caller runs on workflow_dispatch.
+        type: number
+        default: 0
     secrets:
       SCW_PR_REVIEW_SECRET_KEY:
         description: The restricted Scaleway key of the github-pr-review application.
@@ -26,19 +49,28 @@ on:
 jobs:
   review:
     # Bots are skipped, except github-actions (user id 41898282, login github-actions[bot]), which opens the protobase
-    # bump pull requests.
+    # bump pull requests. Of label events only the approval label's count. Every pull_request_target event, labeled
+    # too, carries github.event.pull_request; only workflow_dispatch has none, so it is checked first.
     if: >-
-      !github.event.pull_request.draft &&
-      github.event.pull_request.state == 'open' &&
-      (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282)
+      github.event_name == 'workflow_dispatch' || (
+        !github.event.pull_request.draft &&
+        github.event.pull_request.state == 'open' &&
+        (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282) &&
+        (github.event.action != 'labeled' || github.event.label.name == 'ai-approved'))
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      pull-requests: write
+    # No permissions of its own: the job gets the caller's. Every caller grants pull-requests: write for the comment,
+    # as .github/ai-review/caller.yml does; auto-merge also needs contents: write. A permissions block here would
+    # either break the callers that grant contents: read or take write away from the ones that grant it.
+    # Long enough, with auto-merge, to wait for the slowest CI on the head.
+    timeout-minutes: ${{ inputs.auto-merge && 120 || 15 }}
+    # A label event gets its own group, so adding the label does not cancel a review that is still running. A
+    # dispatched review shares the group of push events on purpose: both review the pull request's current head, so
+    # the newer one replaces the older.
     concurrency:
-      group: ai-pr-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+      group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number }}-${{ github.event.action == 'labeled' && 'label' || 'push' }}
       cancel-in-progress: true
+    env:
+      PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,11 +82,21 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      - working-directory: .github/ai-review
+      - if: github.event.action != 'labeled'
+        working-directory: .github/ai-review
         env:
           REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           FRAMEWORK_GENERIC: ${{ inputs.framework-generic }}
+          AUTO_MERGE: ${{ inputs.auto-merge }}
           GITHUB_TOKEN: ${{ github.token }}
           SCW_PR_REVIEW_SECRET_KEY: ${{ secrets.SCW_PR_REVIEW_SECRET_KEY }}
         run: bun review.ts
+
+      - if: inputs.auto-merge
+        working-directory: .github/ai-review
+        env:
+          REPOSITORY: ${{ github.repository }}
+          MERGE_METHOD: ${{ inputs.merge-method }}
+          RUN_ID: ${{ github.run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun merge.ts

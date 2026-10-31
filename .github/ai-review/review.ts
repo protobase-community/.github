@@ -1,13 +1,17 @@
 // Reviews one pull request with the AI model and posts or updates its advisory comment.
 // It reads the pull request only through the GitHub API, as data, and never checks out or runs its code.
 //
-//   REPOSITORY=owner/name PR_NUMBER=1 GITHUB_TOKEN=... SCW_PR_REVIEW_SECRET_KEY=... bun review.ts
-import { marker, reviewComment, skipComment } from "./comment"
+// With AUTO_MERGE=true a review that finds no issues also puts the approval label on, and any other review takes it
+// off. A head that still carries an earlier approval, because it only merged the base branch in, is not reviewed again.
+//
+//   REPOSITORY=owner/name PR_NUMBER=1 GITHUB_TOKEN=... SCW_PR_REVIEW_SECRET_KEY=... [AUTO_MERGE=true] bun review.ts
+import { carriesApproval } from "./approval"
+import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comment"
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
 import { contentPaths, fitUserMessage } from "./pull-request"
 import { completeAnswer } from "./scaleway"
-import { limits } from "./settings"
+import { approvedLabel, limits } from "./settings"
 
 function required(name: string) {
   const value = process.env[name]
@@ -20,9 +24,25 @@ const number = Number(required("PR_NUMBER"))
 const key = required("SCW_PR_REVIEW_SECRET_KEY")
 const github = gitHub(required("GITHUB_TOKEN"), repository)
 const frameworkGeneric = process.env.FRAMEWORK_GENERIC === "true"
+const autoMerge = process.env.AUTO_MERGE === "true"
 
 const pullRequest = await github.pullRequest(number)
 const sha = pullRequest.head.sha
+
+// A dispatched review gets here without the workflow's event checks.
+if (pullRequest.state !== "open" || pullRequest.draft) {
+  console.log("Not reviewed: the pull request is closed or a draft.")
+  process.exit(0)
+}
+
+if (autoMerge) {
+  const approved = approvedSha((await github.reviewComment(number, marker))?.body ?? "")
+  if (approved !== null && (await carriesApproval(github, sha, approved, pullRequest.base.ref))) {
+    console.log(`Not reviewed again: ${sha.slice(0, 7)} carries the approval of ${approved.slice(0, 7)}.`)
+    process.exit(0)
+  }
+  if (pullRequest.labels.some((label) => label.name === approvedLabel)) await github.removeLabel(number, approvedLabel)
+}
 
 if (pullRequest.changed_files > limits.maxFiles) {
   await github.upsertComment(number, marker, skipComment(sha, `it changes ${pullRequest.changed_files} files, above the cap of ${limits.maxFiles}.`))
@@ -77,3 +97,4 @@ const body =
     ? skipComment(sha, "the model used its whole output budget before answering.")
     : reviewComment(sha, completion.content)
 await github.upsertComment(number, marker, body)
+if (autoMerge && isClean(completion.content)) await github.addLabel(number, approvedLabel)

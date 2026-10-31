@@ -21,3 +21,6 @@ export const limits = {
   maxFileChars: 60_000,
   maxCommentChars: 60_000,
 }
+
+// The label a review that found no issues puts on a pull request when auto-merge is on. Taking it off stops the merge.
+export const approvedLabel = "ai-approved"
