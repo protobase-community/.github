@@ -63,8 +63,9 @@ jobs:
         (github.event.action != 'unlabeled' || github.event.label.name == 'do-not-merge'))
     runs-on: ubuntu-latest
     # No permissions of its own: the job gets the caller's. Every caller grants pull-requests: write for the comment,
-    # as .github/ai-review/caller.yml does; auto-merge also needs contents: write and actions, checks and statuses read. A permissions block here would
-    # either break the callers that grant contents: read or take write away from the ones that grant it.
+    # as .github/ai-review/caller.yml does; auto-merge also needs contents: write, and actions, checks and statuses
+    # read. A permissions block here would either break the callers that grant contents: read or take write away from
+    # the ones that grant it.
     # Long enough, with auto-merge, to wait for the slowest CI on the head.
     timeout-minutes: ${{ inputs.auto-merge && 120 || 15 }}
     # A label event gets its own group, so adding the label does not cancel a review that is still running. A
