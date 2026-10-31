@@ -75,6 +75,14 @@ export function gitHub(token: string, repository: string) {
       }
     },
 
+    // The open pull request whose head is `branch` in this repository, or null.
+    async openPullRequest(branch: string) {
+      const owner = repository.split("/")[0]
+      const path = `/repos/${repository}/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`
+      const pulls = (await (await request(path)).json()) as { number: number }[]
+      return pulls[0]?.number ?? null
+    },
+
     async defaultBranch() {
       const repo = (await (await request(`/repos/${repository}`)).json()) as { default_branch: string }
       return repo.default_branch
