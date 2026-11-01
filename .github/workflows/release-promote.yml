@@ -1,0 +1,113 @@
+# Promotes a repository's newest build that soaked on its beta host to the default branch, every day at 06:00 in
+# Amsterdam, when every gate passes (.github/release/promote.ts): its checks, its soak, no new Bugsink errors and no
+# failed backup or restore check since it went live there, no open serious beta report, and, when it changes risky
+# places, its integration review and scenarios done. It moves the default branch to the build, publishes a release and
+# starts the caller's deploy workflow there. A gate that fails files one notice for Firstmate in the backlog. With
+# hotfix-sha it promotes that build without the soak. Callers run it on two schedules, 04:00 and 05:00 UTC, of which
+# the one at 06:00 in Amsterdam acts, and by hand.
+name: release-promote
+
+on:
+  workflow_call:
+    inputs:
+      beta-branch:
+        type: string
+        default: beta
+      development-branch:
+        type: string
+        default: development
+      beta-results-url:
+        description: Central's list of the beta host's deploy results, such as https://console.protobase.net/deploys/hosts/eu2.
+        type: string
+        required: true
+      deploy-workflow:
+        description: The caller's workflow file to start on the default branch, whose passing run deploys the stable hosts.
+        type: string
+        required: true
+      soak-hours:
+        type: number
+        default: 24
+      bugsink-url:
+        type: string
+        default: https://errors.protobase.net
+      bugsink-projects:
+        description: The Bugsink projects whose new errors hold a promotion, comma separated.
+        type: string
+        required: true
+      bugsink-backups-project:
+        description: The Bugsink project of failed backup and restore checks.
+        type: string
+        required: true
+      risky-paths:
+        description: Regular expressions, one a line, of the files whose change needs the integration review.
+        type: string
+        default: ""
+      hotfix-sha:
+        description: A build to promote now, without the soak.
+        type: string
+        default: ""
+      scheduled:
+        description: Whether the run is one of the two daily schedules, of which only the one at 06:00 in Amsterdam acts.
+        type: boolean
+        default: false
+      without-ci:
+        type: boolean
+        default: false
+      runs-on:
+        type: string
+        default: ubuntu-latest
+      backlog-url:
+        type: string
+        default: https://firstmate-backlog.protobase.net
+    secrets:
+      BACKLOG_RELEASE_EMAIL:
+        required: true
+      BACKLOG_RELEASE_PASSWORD:
+        required: true
+      BUGSINK_TOKEN:
+        description: A read-only Bugsink API token.
+        required: true
+
+jobs:
+  promote:
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 15
+    # No permissions of its own: the caller grants contents: write for the default branch and the release, actions:
+    # write to start the deploy workflow, and pull-requests, checks and statuses read for the gates.
+    concurrency:
+      group: release-promote-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: protobase-community/.github
+          ref: main
+          persist-credentials: false
+          sparse-checkout: |
+            .github/release
+            .github/ai-review
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - working-directory: .github/release
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+          BETA_BRANCH: ${{ inputs.beta-branch }}
+          DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
+          BETA_RESULTS_URL: ${{ inputs.beta-results-url }}
+          DEPLOY_WORKFLOW: ${{ inputs.deploy-workflow }}
+          SOAK_HOURS: ${{ inputs.soak-hours }}
+          BUGSINK_URL: ${{ inputs.bugsink-url }}
+          BUGSINK_TOKEN: ${{ secrets.BUGSINK_TOKEN }}
+          BUGSINK_PROJECTS: ${{ inputs.bugsink-projects }}
+          BUGSINK_BACKUPS_PROJECT: ${{ inputs.bugsink-backups-project }}
+          RISKY_PATHS: ${{ inputs.risky-paths }}
+          HOTFIX_SHA: ${{ inputs.hotfix-sha }}
+          SCHEDULED: ${{ inputs.scheduled }}
+          WITHOUT_CI: ${{ inputs.without-ci }}
+          BACKLOG_URL: ${{ inputs.backlog-url }}
+          BACKLOG_RELEASE_EMAIL: ${{ secrets.BACKLOG_RELEASE_EMAIL }}
+          BACKLOG_RELEASE_PASSWORD: ${{ secrets.BACKLOG_RELEASE_PASSWORD }}
+        run: bun promote.ts

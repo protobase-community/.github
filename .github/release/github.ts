@@ -24,6 +24,14 @@ export function gitHub(token: string, repository: string) {
   const json = async <T>(path: string, init: RequestInit = {}) => (await (await request(path, init)).json()) as T
   const body = (value: unknown) => ({ body: JSON.stringify(value) })
 
+  // The branch's head, or null when there is no such branch.
+  async function branchHead(branch: string) {
+    const response = await send(`/repos/${repository}/branches/${encodeURIComponent(branch)}`)
+    if (response.status === 404) return null
+    if (!response.ok) throw new Error(`GitHub answered ${response.status} for the branch ${branch}`)
+    return ((await response.json()) as { commit: { sha: string } }).commit.sha
+  }
+
   return {
     ...reviewGitHub(token, repository),
 
@@ -79,6 +87,41 @@ export function gitHub(token: string, repository: string) {
     async publish(id: number, tag: string, target: string) {
       const published = { tag_name: tag, draft: false, target_commitish: target, make_latest: "true" }
       await request(`/repos/${repository}/releases/${id}`, { method: "PATCH", ...body(published) })
+    },
+
+    branchHead,
+
+    // Moves `branch` forward to `sha`, or creates it there; never backwards or across: GitHub refuses that as no
+    // fast-forward.
+    async moveBranch(branch: string, sha: string) {
+      const moved = await send(`/repos/${repository}/git/refs/heads/${encodeURIComponent(branch)}`, { method: "PATCH", ...body({ sha, force: false }) })
+      if (moved.ok) return
+      if (moved.status !== 404 && moved.status !== 422) throw new Error(`GitHub answered ${moved.status} to moving ${branch} to ${sha}`)
+      if (moved.status === 422 && (await branchHead(branch)) !== null) throw new Error(`${branch} cannot move forward to ${sha}`)
+      await request(`/repos/${repository}/git/refs`, { method: "POST", ...body({ ref: `refs/heads/${branch}`, sha }) })
+    },
+
+    // The files changed from `base` to `head`, at most 300 as GitHub lists them.
+    async changedFiles(base: string, head: string) {
+      const { files } = await json<{ files: { filename: string }[] }>(`/repos/${repository}/compare/${base}...${head}`)
+      return files.map((file) => file.filename)
+    },
+
+    // The repository's published releases, newest first.
+    async publishedReleases() {
+      return (await json<(DraftRelease & { created_at: string; prerelease: boolean })[]>(`/repos/${repository}/releases?per_page=20`))
+        .filter((release) => !release.draft && !release.prerelease)
+    },
+
+    // The commit a tag or branch names.
+    async commitOf(ref: string) {
+      return (await json<{ sha: string }>(`/repos/${repository}/commits/${encodeURIComponent(ref)}`)).sha
+    },
+
+    // A published release at `target`, which creates its tag, with GitHub's generated notes.
+    async release(tag: string, target: string) {
+      const published = { tag_name: tag, target_commitish: target, name: tag, generate_release_notes: true, make_latest: "true" }
+      return json<DraftRelease>(`/repos/${repository}/releases`, { method: "POST", ...body(published) })
     },
 
     // Moves `branch` to `sha` when that is a fast-forward, else merges `sha` into it with a merge commit. Answers the

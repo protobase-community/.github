@@ -8,6 +8,8 @@ type Fetch = typeof fetch
 
 export type RequestText = { reason: string; why: string; plan: string }
 
+export type BacklogTask = { id: string; title: string; status: string; state: string; cancelled: boolean; priority: number | null }
+
 // The release task of a repository: `release-` and its owner and name joined by a dash.
 export const releaseTaskId = (repository: string) => `release-${repository.replace("/", "-")}`
 
@@ -77,6 +79,28 @@ export async function backlog(url: string, email: string, password: string, fetc
 
     async update(id: number, text: RequestText) {
       await expectOk(await api("PATCH", `/task_preconditions/${id}`, text), `updating the request ${id}`)
+    },
+
+    // Every task the account may read that matches the filter, with the fields the gates read.
+    async tasks(filter: string) {
+      const found: BacklogTask[] = []
+      let token = ""
+      do {
+        const query = new URLSearchParams({ filter, page_size: "100", ...(token && { page_token: token }) })
+        const response = await expectOk(await api("GET", `/tasks?${query}`), `listing the tasks ${filter}`)
+        const page = (await response.json()) as { items: BacklogTask[]; next_page_token?: string }
+        found.push(...page.items)
+        token = page.next_page_token ?? ""
+      } while (token)
+      return found
+    },
+
+    // A task of its own, such as a held promotion's notice for Firstmate; false when one of that id exists already.
+    async fileTask(task: { id: string; title: string; repo: string; body: string }) {
+      const response = await api("POST", "/tasks", { ...task, kind: "release" })
+      if (response.status === 409) return false
+      await expectOk(response, `filing the task ${task.id}`)
+      return true
     },
 
     link: (id: number) => `${url}/task_preconditions/${id}`,
