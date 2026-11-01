@@ -54,6 +54,12 @@ describe("commitGate", () => {
     expect(commitGate(none, { number: 12, ci: { state: "failed", text: "failed: test" }, review: clean })).toEqual({ state: "failed", text: "#12's CI failed: test" })
   })
 
+  test("passes a commit of a repository without CI on its pull request's review alone", () => {
+    const none = { state: "pending" as const, text: "no CI ran on it yet" }
+    expect(commitGate(none, { number: 12, ci: none, review: clean }, true)).toEqual({ state: "passed", text: "no CI here; #12's AI review: no issues found" })
+    expect(commitGate(none, { number: 12, ci: none, review: clean }).state).toBe("pending")
+  })
+
   test("never passes a commit without a reviewed pull request", () => {
     expect(commitGate(passed, null).state).toBe("failed")
     expect(commitGate(passed, { number: 12, ci: passed, review: { state: "failed", text: "found issues" } })).toEqual({ state: "failed", text: "#12's AI review: found issues" })

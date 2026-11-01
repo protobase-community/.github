@@ -20,6 +20,10 @@ on:
         description: The branch that is released into the default branch.
         type: string
         default: development
+      without-ci:
+        description: The repository has no CI, so a commit's only check is the AI review of its pull request.
+        type: boolean
+        default: false
       version-file:
         description: A JSON file whose version tags the release (v<version>), such as packages/manager/package.json; the UTC date and time when empty.
         type: string
@@ -91,6 +95,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
           VERSION_FILE: ${{ inputs.version-file }}
+          WITHOUT_CI: ${{ inputs.without-ci }}
           DEPLOY_WORKFLOW: ${{ inputs.deploy-workflow }}
           DEPLOY_REF: ${{ inputs.deploy-ref }}
           DEPLOYED_URL: ${{ inputs.deployed-url }}
