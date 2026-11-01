@@ -32,11 +32,21 @@ describe("reviewGate", () => {
     expect(reviewGate(head, comment(older, "findings"), false).state).toBe("pending")
   })
 
-  test("fails a head the review found issues in or skipped, with the reason", () => {
+  test("fails a head the review found issues in or skipped for another reason than its size, with the reason", () => {
     expect(reviewGate(head, comment(head, "findings"), false)).toEqual({ state: "failed", text: "found issues" })
-    expect(reviewGate(head, comment(head, "skipped", "Not reviewed: its diff alone comes to 312k characters."), false)).toEqual({
-      state: "failed", text: "not reviewed: its diff alone comes to 312k characters.",
+    expect(reviewGate(head, comment(head, "skipped", "Not reviewed: the model used its whole output budget before answering."), false)).toEqual({
+      state: "failed", text: "not reviewed: the model used its whole output budget before answering.",
     })
+  })
+
+  test("passes a head too big to review, saying so", () => {
+    const tooLong = comment(head, "skipped", "Not reviewed: its diff alone comes to 403k characters, above the cap of 300k.")
+    expect(reviewGate(head, tooLong, false)).toEqual({
+      state: "passed",
+      text: "too big to review (its diff alone comes to 403k characters, above the cap of 300k); each change was reviewed on its way into development",
+    })
+    const tooMany = comment(head, "skipped", "Not reviewed: it changes 212 files, above the cap of 150.")
+    expect(reviewGate(head, tooMany, false).state).toBe("passed")
   })
 })
 
