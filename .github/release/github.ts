@@ -149,15 +149,17 @@ export function gitHub(token: string, repository: string) {
 
     // Moves `branch` to `sha` when that is a fast-forward, else merges `sha` into it with a merge commit. A branch whose
     // rules take changes only through a pull request gets one, from `release/<tag>` at `sha`, merged with a merge
-    // commit. Answers the branch's new head.
+    // commit. So does a release that changes a workflow file: GitHub refuses GITHUB_TOKEN any direct update of a branch
+    // that changes one, with 403 before it checks fast-forward or rules, but merges such a pull request. Answers the
+    // branch's new head.
     async advance(branch: string, sha: string, tag: string) {
       const message = `Release ${tag}`
       const forward = await send(`/repos/${repository}/git/refs/heads/${encodeURIComponent(branch)}`, { method: "PATCH", ...body({ sha, force: false }) })
       if (forward.ok) return sha
-      if (forward.status !== 422) throw new Error(`GitHub answered ${forward.status} to moving ${branch} to ${sha}`)
+      if (forward.status !== 422 && forward.status !== 403) throw new Error(`GitHub answered ${forward.status} to moving ${branch} to ${sha}`)
       const merge = await send(`/repos/${repository}/merges`, { method: "POST", ...body({ base: branch, head: sha, commit_message: message }) })
       if (merge.ok) return ((await merge.json()) as { sha: string }).sha
-      if (merge.status !== 409) throw new Error(`GitHub answered ${merge.status} to merging ${sha} into ${branch}`)
+      if (merge.status !== 409 && merge.status !== 403) throw new Error(`GitHub answered ${merge.status} to merging ${sha} into ${branch}`)
       return throughPullRequest(branch, sha, tag, message)
     },
 
