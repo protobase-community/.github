@@ -21,7 +21,7 @@
 # API as data. pull_request_target also runs the caller workflow from the base branch, and the caller pins this
 # workflow to main, so a pull request that edits either one, or the script, is reviewed by the merged version.
 # The model gets no tools; its answer is only posted as a comment. A caller can also run it with workflow_dispatch
-# and a pull request number, as the protobase bump does for its pull requests, whose events start no workflow.
+# and a pull request number, for a pull request whose events start no workflow, such as one a workflow opened.
 #
 # The model and its settings live in .github/ai-review/settings.ts. The caller to copy into a repository is
 # .github/ai-review/caller.yml.
@@ -59,8 +59,8 @@ on:
 
 jobs:
   review:
-    # Bots are skipped, except github-actions (user id 41898282, login github-actions[bot]), which opens the protobase
-    # bump pull requests. Of label events only adding the approval label and taking the hold label off count. Every
+    # Bots are skipped, except github-actions (user id 41898282, login github-actions[bot]), which opens the pull
+    # requests of a repository's own workflows. Of label events only adding the approval label and taking the hold label off count. Every
     # pull_request_target event, labeled too, carries github.event.pull_request; workflow_dispatch and workflow_run
     # have none, so they are checked first. A CI run counts only on a branch of this repository, never a fork's.
     if: >-

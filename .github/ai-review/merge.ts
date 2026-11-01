@@ -37,7 +37,7 @@ const number =
     : ((await github.openPullRequest(required("HEAD_BRANCH"))) ?? stop(`no open pull request has the head ${process.env.HEAD_BRANCH}`))
 
 const writers = new Set(["admin", "maintain", "write"])
-// github-actions opens the protobase bump pull requests. It is no collaborator, and only this repository's own
+// github-actions opens the pull requests of this repository's own workflows. It is no collaborator, and only those
 // workflows act as it.
 const workflowAuthor = "github-actions[bot]"
 
