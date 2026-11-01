@@ -58,21 +58,33 @@ describe("completeAnswer", () => {
     expect(calls()).toBe(2)
   })
 
-  test("asks again with less reasoning effort", async () => {
+  // Answers with text only at the given reasoning effort, and records every effort asked for.
+  function answersAt(effort: string) {
     const efforts: string[] = []
     globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      const effort = JSON.parse(String(init.body)).reasoning_effort
-      efforts.push(effort)
-      const content = effort === "high" ? "" : "No issues found."
+      const asked = JSON.parse(String(init.body)).reasoning_effort
+      efforts.push(asked)
+      const content = asked === effort ? "No issues found." : ""
       return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: content ? "stop" : "length" }] })}\n\ndata: [DONE]\n\n`)
     }) as unknown as typeof fetch
+    return efforts
+  }
+
+  test("asks again with medium reasoning effort", async () => {
+    const efforts = answersAt("medium")
     expect((await completeAnswer("key", "system", "user")).content).toBe("No issues found.")
     expect(efforts).toEqual(["high", "medium"])
   })
 
-  test("returns the second empty answer without asking a third time", async () => {
-    const calls = answers("", "", "never sent")
+  test("asks a third time with low reasoning effort after medium is empty too", async () => {
+    const efforts = answersAt("low")
+    expect((await completeAnswer("key", "system", "user")).content).toBe("No issues found.")
+    expect(efforts).toEqual(["high", "medium", "low"])
+  })
+
+  test("returns the third empty answer without asking a fourth time", async () => {
+    const calls = answers("", "", "", "never sent")
     expect((await completeAnswer("key", "system", "user")).content).toBe("")
-    expect(calls()).toBe(2)
+    expect(calls()).toBe(3)
   })
 })
