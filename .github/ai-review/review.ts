@@ -11,8 +11,9 @@ import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comm
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
 import { contentPaths, fitUserMessage } from "./pull-request"
-import { complete, reasonedToBudget } from "./scaleway"
+import { complete } from "./scaleway"
 import { approvedLabel, limits } from "./settings"
+import { skipReason } from "./verdict"
 
 function required(name: string) {
   const value = process.env[name]
@@ -98,14 +99,6 @@ const system = buildSystemPrompt(await loadTemplates(), {
 const completion = await complete(key, system, user)
 console.log(`finish=${completion.finish} usage=${JSON.stringify(completion.usage)}`)
 
-function skipReason() {
-  if (!completion.content.trim()) {
-    return completion.finish === "length" ? "the model used its whole output budget before answering." : "the model gave no answer."
-  }
-  if (isClean(completion.content) && reasonedToBudget(completion)) return "the model's reasoning ran into its budget before it finished checking."
-  return null
-}
-
-const reason = skipReason()
+const reason = skipReason(completion)
 await github.upsertComment(number, marker, reason ? skipComment(sha, reason) : reviewComment(sha, completion.content))
 if (autoMerge && !reason && isClean(completion.content)) await github.addLabel(number, approvedLabel)
