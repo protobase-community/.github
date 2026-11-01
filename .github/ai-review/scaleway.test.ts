@@ -20,6 +20,30 @@ describe("complete", () => {
     expect(completion.finish).toBe("stop")
   })
 
+  test("keeps the reasoning apart from the answer", async () => {
+    stream(
+      { choices: [{ delta: { reasoning_content: "The diff " } }] },
+      { choices: [{ delta: { reasoning_content: "looks fine." } }] },
+      { choices: [{ delta: { content: "No issues found." }, finish_reason: "stop" }] },
+    )
+    const completion = await complete("key", "system", "user")
+    expect(completion.content).toBe("No issues found.")
+    expect(completion.reasoning).toBe("The diff looks fine.")
+  })
+
+  // The shape of the c60cdc0 review: the model ended its reasoning well below the output cap and replied with nothing.
+  test("returns an empty answer that ended its reasoning", async () => {
+    stream(
+      { choices: [{ delta: { reasoning_content: "So the verdict: No issues found." } }] },
+      { choices: [{ delta: { content: "\n\n" }, finish_reason: "stop" }] },
+      { choices: [], usage: { completion_tokens: 12410, completion_tokens_details: { reasoning_tokens: 12408 } } },
+    )
+    const completion = await complete("key", "system", "user")
+    expect(completion.content.trim()).toBe("")
+    expect(completion.reasoning).toBe("So the verdict: No issues found.")
+    expect(completion.finish).toBe("stop")
+  })
+
   test("fails on an error inside the stream", async () => {
     stream({ choices: [{ delta: { content: "Partial" } }] }, { error: { message: "overloaded", code: 500 } })
     await expect(complete("key", "system", "user")).rejects.toThrow("an error in the response stream")

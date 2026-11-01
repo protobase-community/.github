@@ -1,9 +1,9 @@
 // One chat completion on Scaleway's Generative APIs, streamed so a long reasoning phase never idles the connection.
 // The model gets no tools: its answer is text that is only ever posted as a comment. A refused or failed request is
-// not sent again: the review fails instead.
+// not sent again: the review fails instead. The reasoning is kept apart from the answer and never posted.
 import { settings } from "./settings"
 
-export type Completion = { content: string; finish: string | null; usage: unknown }
+export type Completion = { content: string; reasoning: string; finish: string | null; usage: unknown }
 
 export async function complete(key: string, system: string, user: string): Promise<Completion> {
   const body = JSON.stringify({
@@ -30,6 +30,7 @@ export async function complete(key: string, system: string, user: string): Promi
   if (!response.body) throw new Error("Scaleway sent no response body")
 
   let content = ""
+  let reasoning = ""
   let finish: string | null = null
   let usage: unknown = null
   let buffer = ""
@@ -46,11 +47,12 @@ export async function complete(key: string, system: string, user: string): Promi
       const choice = event.choices?.[0]
       if (!choice) continue
       content += choice.delta?.content ?? ""
+      reasoning += choice.delta?.reasoning_content ?? ""
       if (choice.finish_reason) finish = choice.finish_reason
     }
   }
   // A stream that ends without a finish reason was cut off, so its answer is not a review.
   if (!finish) throw new Error("Scaleway ended the response stream without finishing")
-  return { content, finish, usage }
+  return { content, reasoning, finish, usage }
 }
 
