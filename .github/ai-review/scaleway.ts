@@ -3,9 +3,7 @@
 // not sent again: the review fails instead.
 import { settings } from "./settings"
 
-type Usage = { completion_tokens_details?: { reasoning_tokens?: number } }
-
-export type Completion = { content: string; finish: string | null; usage: Usage | null }
+export type Completion = { content: string; finish: string | null; usage: unknown }
 
 export async function complete(key: string, system: string, user: string): Promise<Completion> {
   const body = JSON.stringify({
@@ -19,7 +17,6 @@ export async function complete(key: string, system: string, user: string): Promi
     temperature: settings.temperature,
     max_tokens: settings.maxTokens,
     reasoning_effort: settings.reasoningEffort,
-    thinking_token_budget: settings.thinkingTokenBudget,
   })
   const response = await fetch(settings.endpoint, {
     method: "POST",
@@ -34,7 +31,7 @@ export async function complete(key: string, system: string, user: string): Promi
 
   let content = ""
   let finish: string | null = null
-  let usage: Usage | null = null
+  let usage: unknown = null
   let buffer = ""
   const decoder = new TextDecoder()
   for await (const chunk of response.body) {
@@ -57,8 +54,3 @@ export async function complete(key: string, system: string, user: string): Promi
   return { content, finish, usage }
 }
 
-// Whether the reasoning ran into its budget and was cut off, so a short answer may be one the model had not finished
-// checking. vLLM stops it one token below the budget.
-export function reasonedToBudget(completion: Completion) {
-  return (completion.usage?.completion_tokens_details?.reasoning_tokens ?? 0) >= settings.thinkingTokenBudget - 1
-}

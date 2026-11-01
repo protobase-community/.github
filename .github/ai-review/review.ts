@@ -94,7 +94,7 @@ const system = buildSystemPrompt(await loadTemplates(), {
   rules: await rules(),
 })
 
-// One ask only: an empty answer, or a clean one whose reasoning was cut off at its budget, is not a pass, and the
+// One ask only: an empty answer, or a clean one cut off at the output cap, is not a pass, and the
 // review says so instead of asking again.
 const completion = await complete(key, system, user)
 console.log(`finish=${completion.finish} usage=${JSON.stringify(completion.usage)}`)
