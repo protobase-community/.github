@@ -63,9 +63,12 @@ export async function complete(key: string, system: string, user: string, effort
 }
 
 // The model sometimes answers with nothing, whether it ran out of budget or stopped early, so an empty answer is asked
-// for once more, with less reasoning effort.
+// for again with each retry effort in turn, each one lower. The last empty answer is returned for the caller to skip.
 export async function completeAnswer(key: string, system: string, user: string) {
-  const completion = await complete(key, system, user)
-  if (completion.content.trim()) return completion
-  return complete(key, system, user, settings.retryReasoningEffort)
+  let completion = await complete(key, system, user)
+  for (const effort of settings.retryReasoningEfforts) {
+    if (completion.content.trim()) return completion
+    completion = await complete(key, system, user, effort)
+  }
+  return completion
 }
