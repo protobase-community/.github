@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { WorkflowRun } from "../ai-review/checks"
-import { allPassed, ciGate, devGate, reviewGate } from "./gates"
+import { allPassed, ciGate, commitGate, devGate, reviewGate } from "./gates"
 
 const head = "a".repeat(40)
 const older = "b".repeat(40)
@@ -34,27 +34,56 @@ describe("reviewGate", () => {
 
   test("fails a head the review found issues in or skipped, with the reason", () => {
     expect(reviewGate(head, comment(head, "findings"), false)).toEqual({ state: "failed", text: "found issues" })
-    expect(reviewGate(head, comment(head, "skipped", "Not reviewed: its diff alone comes to 312k characters."), false)).toEqual({
-      state: "failed", text: "not reviewed: its diff alone comes to 312k characters.",
+    expect(reviewGate(head, comment(head, "skipped", "Not reviewed: its diff alone comes to 403k characters, above the cap of 300k."), false)).toEqual({
+      state: "failed", text: "not reviewed: its diff alone comes to 403k characters, above the cap of 300k.",
     })
   })
 })
 
-describe("devGate", () => {
-  test("passes only while the head runs there and is healthy", () => {
-    expect(devGate(head, { deployed: head, failed: null, healthStatus: 200 })).toEqual({ state: "passed", text: "runs aaaaaaa and is healthy" })
-    expect(devGate(head, { deployed: head, failed: null, healthStatus: 502 }).state).toBe("failed")
+describe("commitGate", () => {
+  const passed = { state: "passed" as const, text: "passed" }
+  const clean = { state: "passed" as const, text: "no issues found" }
+
+  test("passes a commit whose pull request was reviewed clean and whose CI passed", () => {
+    expect(commitGate(passed, { number: 12, ci: passed, review: clean })).toEqual({ state: "passed", text: "CI passed; #12's AI review: no issues found" })
   })
 
-  test("waits while another commit runs, and fails a head that failed to deploy", () => {
-    expect(devGate(head, { deployed: older, failed: null, healthStatus: 200 })).toEqual({ state: "pending", text: "runs bbbbbbb, not aaaaaaa yet" })
-    expect(devGate(head, { deployed: null, failed: null, healthStatus: 200 }).text).toBe("runs no commit, not aaaaaaa yet")
-    expect(devGate(head, { deployed: older, failed: head, healthStatus: 200 })).toEqual({ state: "failed", text: "aaaaaaa failed to deploy" })
+  test("takes the pull request's CI for a commit no CI ran on, such as a squash merge", () => {
+    const none = { state: "pending" as const, text: "no CI ran on it yet" }
+    expect(commitGate(none, { number: 12, ci: passed, review: clean }).text).toBe("#12's CI passed; #12's AI review: no issues found")
+    expect(commitGate(none, { number: 12, ci: { state: "failed", text: "failed: test" }, review: clean })).toEqual({ state: "failed", text: "#12's CI failed: test" })
+  })
+
+  test("passes a commit of a repository without CI on its pull request's review alone", () => {
+    const none = { state: "pending" as const, text: "no CI ran on it yet" }
+    expect(commitGate(none, { number: 12, ci: none, review: clean }, true)).toEqual({ state: "passed", text: "no CI here; #12's AI review: no issues found" })
+    expect(commitGate(none, { number: 12, ci: none, review: clean }).state).toBe("pending")
+  })
+
+  test("never passes a commit without a reviewed pull request", () => {
+    expect(commitGate(passed, null).state).toBe("failed")
+    expect(commitGate(passed, { number: 12, ci: passed, review: { state: "failed", text: "found issues" } })).toEqual({ state: "failed", text: "#12's AI review: found issues" })
+  })
+})
+
+describe("devGate", () => {
+  const dev = (deployed: string | null, hasCommit: boolean, failed: string | null = null, healthStatus = 200) => ({ deployed, failed, healthStatus, hasCommit })
+
+  test("passes while the commit, or a later one that has it, runs there and is healthy", () => {
+    expect(devGate(head, dev(head, true))).toEqual({ state: "passed", text: "runs aaaaaaa and is healthy" })
+    expect(devGate(head, dev(older, true))).toEqual({ state: "passed", text: "runs bbbbbbb, which has aaaaaaa and is healthy" })
+    expect(devGate(head, dev(head, true, null, 502)).state).toBe("failed")
+  })
+
+  test("waits while it runs an earlier commit, and fails a commit that failed to deploy", () => {
+    expect(devGate(head, dev(older, false))).toEqual({ state: "pending", text: "runs bbbbbbb, which does not have aaaaaaa yet" })
+    expect(devGate(head, dev(null, false)).text).toBe("runs no commit, which does not have aaaaaaa yet")
+    expect(devGate(head, dev(older, false, head))).toEqual({ state: "failed", text: "aaaaaaa failed to deploy" })
   })
 })
 
 test("allPassed leaves out a repository without a dev environment", () => {
   const passed = { state: "passed" as const, text: "" }
-  expect(allPassed({ ci: passed, review: passed, dev: null })).toBe(true)
-  expect(allPassed({ ci: passed, review: passed, dev: { state: "pending", text: "" } })).toBe(false)
+  expect(allPassed({ commit: passed, dev: null })).toBe(true)
+  expect(allPassed({ commit: passed, dev: { state: "pending", text: "" } })).toBe(false)
 })

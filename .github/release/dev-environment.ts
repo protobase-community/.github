@@ -14,7 +14,7 @@ async function commitAt(url: string, fetchFn: Fetch) {
   return (await response.text()).trim() || null
 }
 
-export async function devEnvironment(addresses: DevAddresses, fetchFn: Fetch = fetch): Promise<DevEnvironment> {
+export async function devEnvironment(addresses: DevAddresses, fetchFn: Fetch = fetch): Promise<Omit<DevEnvironment, "hasCommit">> {
   const deployed = await commitAt(addresses.deployedUrl, fetchFn)
   const failed = addresses.failedUrl ? await commitAt(addresses.failedUrl, fetchFn) : null
   const health = await fetchFn(addresses.healthUrl, { signal: AbortSignal.timeout(15_000) })

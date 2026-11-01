@@ -1,0 +1,31 @@
+# Releases this repository's development into main only on the captain's go, as every caller of release.yml does
+# (.github/release/caller.yml). It must be on both branches: a push to development runs development's copy, the
+# schedule, which notices the captain's approval, main's. GitHub runs no schedule of a file that is not on main yet, so
+# until this release brings it there, a push to development is what notices an approval. Public, so it runs on GitHub's
+# runners. It starts no deploy workflow, so it needs no actions: write. release.yml@main is the reviewed version: main
+# moves only through a release the captain approved.
+name: release-caller
+
+on:
+  push:
+    branches: [development]
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+  actions: read
+  checks: read
+  statuses: read
+
+jobs:
+  release:
+    uses: protobase-community/.github/.github/workflows/release.yml@main # zizmor: ignore[unpinned-uses] main is the reviewed version
+    # Its only check is the AI review: it has no CI.
+    with:
+      without-ci: true
+    secrets:
+      BACKLOG_RELEASE_EMAIL: ${{ secrets.BACKLOG_RELEASE_EMAIL }}
+      BACKLOG_RELEASE_PASSWORD: ${{ secrets.BACKLOG_RELEASE_PASSWORD }}
