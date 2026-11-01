@@ -3,7 +3,8 @@
 #
 # Every @protobase/* package gets the same specifier, the release's caret range (^<version>), and bun.lock follows. The change goes to one branch,
 # protobase-bump, so a template never has more than one bump pull request: a newer release replaces the branch
-# and the open pull request with it. A pull request whose CI fails, or whose review finds an issue, stays open for a person.
+# and the open pull request with it. Each run rebuilds the branch from the default branch, so a fix landed there
+# after the bump opened reaches the pull request and gets a new CI run. A pull request whose CI fails, or whose review finds an issue, stays open for a person.
 #
 # Pushes made with the default GITHUB_TOKEN start no pull_request runs, so this workflow starts the template's CI
 # and its AI review (ai-pr-review.yml, with auto-merge on) with workflow_dispatch, once for each head commit. The
@@ -76,15 +77,17 @@ jobs:
         run: |
           bun install
 
-          if git fetch --quiet --depth 1 origin "$BRANCH" 2>/dev/null && git diff --quiet FETCH_HEAD -- package.json bun.lock README.md; then
-            echo "The $BRANCH branch already moves the template to $TARGET."
-            exit 0
-          fi
-
           git checkout -B "$BRANCH"
           git add -A
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit --quiet -m "chore: protobase $TARGET"
+
+          # The branch is rebuilt from the default branch on every run, so a fix landed there after the bump opened
+          # reaches it. Only a branch with the same tree is left alone, so its commit keeps its CI and review runs.
+          if git fetch --quiet --depth 1 origin "$BRANCH" 2>/dev/null && [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse 'FETCH_HEAD^{tree}')" ]; then
+            echo "The $BRANCH branch already moves the current template to $TARGET."
+            exit 0
+          fi
           git push --force origin "$BRANCH"
 
           title="chore: protobase $TARGET"
