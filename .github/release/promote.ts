@@ -76,7 +76,7 @@ const gates: Array<[string, Gate]> = [
   ["Checks", await checksOf(build.sha)],
   ...(hotfix ? [] : [["Soak", soakGate(build.liveSince, now, soakHours)] as [string, Gate]]),
   ["Errors", errorsGate(errorIssues, build.liveSince, "errors")],
-  ["Backups and restore tests", errorsGate(backupIssues, build.liveSince, "backup or restore failures")],
+  ["Backups and restore tests", errorsGate(backupIssues, build.liveSince, "backup or restore failures", "last_seen")],
   ["Beta reports", reportsGate(reports)],
   ...(touched.length > 0 ? [["Integration review", scenariosGate(build.sha, scenarios)] as [string, Gate]] : []),
 ]

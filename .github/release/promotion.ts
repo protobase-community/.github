@@ -24,8 +24,9 @@ export function soakGate(liveSince: Date, now: Date, hours: number): Gate {
 // The issues Bugsink first saw since a moment: new errors of the build, or a failed backup or restore check.
 export type Issue = { id: string; first_seen: string; last_seen: string; calculated_type: string; calculated_value: string }
 
-export function errorsGate(issues: Issue[], since: Date, what: string): Gate {
-  const fresh = issues.filter((issue) => new Date(issue.first_seen) > since)
+// `seen` is `first_seen` for new errors, or `last_seen` for failures that may repeat an old issue, as a backup check's do.
+export function errorsGate(issues: Issue[], since: Date, what: string, seen: "first_seen" | "last_seen" = "first_seen"): Gate {
+  const fresh = issues.filter((issue) => new Date(issue[seen]) >= since)
   if (fresh.length === 0) return { state: "passed", text: `no new ${what}` }
   const names = fresh.slice(0, 3).map((issue) => `${issue.calculated_type}: ${issue.calculated_value}`.slice(0, 80))
   return { state: "failed", text: `${fresh.length} new ${what} since ${since.toISOString()}: ${names.join("; ")}` }
@@ -38,8 +39,11 @@ export function reportsGate(reports: BacklogTask[]): Gate {
   return { state: "failed", text: `open serious beta reports: ${open.map((task) => task.id).join(", ")}` }
 }
 
-// The files of a batch that need the integration review: the changes to the patterns' places.
+// The files of a batch that need the integration review: the changes to the patterns' places. GitHub lists at most 300
+// changed files, so a list that long may be cut short and counts as risky whatever it shows.
+export const maxListedFiles = 300
 export function riskyFiles(files: string[], patterns: RegExp[]) {
+  if (files.length >= maxListedFiles && patterns.length > 0) return files
   return files.filter((file) => patterns.some((pattern) => pattern.test(file)))
 }
 

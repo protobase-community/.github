@@ -25,6 +25,7 @@ describe("errorsGate", () => {
   test("fails on an issue first seen since the build went live", () => {
     const since = new Date("2026-11-01T09:00:00Z")
     expect(errorsGate([issue("2026-10-30T00:00:00Z")], since, "errors").state).toBe("passed")
+    expect(errorsGate([{ ...issue("2026-10-30T00:00:00Z"), last_seen: "2026-11-01T10:00:00Z" }], since, "failures", "last_seen").state).toBe("failed")
     expect(errorsGate([issue("2026-11-01T10:00:00Z")], since, "errors")).toEqual({
       state: "failed", text: "1 new errors since 2026-11-01T09:00:00.000Z: TypeError: x is undefined",
     })
@@ -34,6 +35,12 @@ describe("errorsGate", () => {
 test("fails on an open serious beta report only", () => {
   expect(reportsGate([task("r1", { state: "queued", priority: 2 }), task("r2", { priority: 0 })]).state).toBe("passed")
   expect(reportsGate([task("r3", { state: "queued", priority: 1 })])).toEqual({ state: "failed", text: "open serious beta reports: r3" })
+})
+
+test("takes a list of changed files cut short at 300 for risky", () => {
+  const many = Array.from({ length: 300 }, (_, i) => `docs/${i}.md`)
+  expect(riskyFiles(many, [/migrations\//])).toHaveLength(300)
+  expect(riskyFiles(many, [])).toEqual([])
 })
 
 test("finds the files that need the integration review", () => {
