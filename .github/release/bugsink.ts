@@ -16,7 +16,8 @@ export function bugsink(url: string, token: string, fetchFn: Fetch = fetch) {
         const page = (await response.json()) as { results: Issue[]; next: string | null }
         const recent = page.results.filter((issue) => new Date(issue.last_seen) >= since)
         found.push(...recent)
-        next = recent.length === page.results.length ? page.next : null
+        // Older issues, or an empty page, end the walk.
+        next = page.results.length > 0 && recent.length === page.results.length ? page.next : null
       }
       return found
     },
