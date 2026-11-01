@@ -1,0 +1,90 @@
+# Releases a repository's development branch into its default branch only on the captain's go (.github/release/
+# release.ts). Each run keeps the one release pull request open and held by the do-not-merge label, its body listing
+# the commits and where its head's checks stand: CI, the AI review (ai-pr-review.yml) and, when the caller names one,
+# its dev environment, which must run that exact commit and be healthy. Once all three passed, it asks the captain in
+# the backlog app, which emails them, as a precondition of the repository's release task; a newer head updates the
+# same pull request and the same request. Once the captain approved the head, while its checks still pass, the run
+# merges that exact commit with a merge commit, using GITHUB_TOKEN, and starts the caller's deploy workflow on the
+# default branch, since a merge with GITHUB_TOKEN starts no push workflow.
+#
+# Callers run it on a push to the development branch, on a schedule, which is how an approval is noticed, and by hand;
+# the schedule runs only the default branch's copy of the caller. It checks out only the scripts of this repository's
+# main and runs nothing from the caller's repository. The caller to copy is .github/release/caller.yml.
+name: release
+
+on:
+  workflow_call:
+    inputs:
+      development-branch:
+        description: The branch that is released into the default branch.
+        type: string
+        default: development
+      deploy-workflow:
+        description: The caller's workflow file to start on the default branch after a merge, such as test.yml; none when empty.
+        type: string
+        default: ""
+      deployed-url:
+        description: Where the dev environment says which commit it runs; no dev environment gate when empty.
+        type: string
+        default: ""
+      failed-url:
+        description: Where the dev environment says which commit failed to deploy (404 when none).
+        type: string
+        default: ""
+      health-url:
+        description: The dev environment's health check, which must answer 2xx; needed with deployed-url.
+        type: string
+        default: ""
+      runs-on:
+        description: The runner, such as hetzner-private for a private repository, whose GitHub-hosted minutes are few.
+        type: string
+        default: ubuntu-latest
+      backlog-url:
+        description: The backlog app that asks the captain.
+        type: string
+        default: https://firstmate-backlog.protobase.net
+    secrets:
+      BACKLOG_RELEASE_EMAIL:
+        description: The release account of the backlog app (firstmate-backlog's docs/releases.md).
+        required: true
+      BACKLOG_RELEASE_PASSWORD:
+        description: That account's password.
+        required: true
+
+jobs:
+  release:
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 10
+    # No permissions of its own: the caller grants contents: write and pull-requests: write for the pull request and
+    # its merge, actions: write to start the deploy workflow, and actions, checks and statuses read for the gates.
+    # One run at a time per repository; a newer one waits rather than cancelling one that may be merging.
+    concurrency:
+      group: release-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: protobase-community/.github
+          ref: main
+          persist-credentials: false
+          sparse-checkout: |
+            .github/release
+            .github/ai-review
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - working-directory: .github/release
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+          DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
+          DEPLOY_WORKFLOW: ${{ inputs.deploy-workflow }}
+          DEPLOYED_URL: ${{ inputs.deployed-url }}
+          FAILED_URL: ${{ inputs.failed-url }}
+          HEALTH_URL: ${{ inputs.health-url }}
+          BACKLOG_URL: ${{ inputs.backlog-url }}
+          BACKLOG_RELEASE_EMAIL: ${{ secrets.BACKLOG_RELEASE_EMAIL }}
+          BACKLOG_RELEASE_PASSWORD: ${{ secrets.BACKLOG_RELEASE_PASSWORD }}
+        run: bun release.ts

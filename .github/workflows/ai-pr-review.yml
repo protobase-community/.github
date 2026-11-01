@@ -1,0 +1,118 @@
+# Posts one advisory AI review comment on a pull request and updates it on every push. It never blocks a merge.
+#
+# With auto-merge on, a review that finds no issues puts the ai-approved label on the pull request, and the same job
+# then merges it with GITHUB_TOKEN once every other check on the head has passed (.github/ai-review/merge.ts). The
+# merge never waits, so it holds no runner: while checks still run, the caller's workflow_run trigger on its CI
+# workflows tries again each time one finishes, and the last one merges.
+# A merge with GITHUB_TOKEN starts no workflow on the base branch. Any other new commit takes the label off and gets
+# a new review, but a head that only merged the base branch in, as "Update branch" does, keeps its approval and is
+# merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review. It
+# never merges a pull request whose head is in another repository or a deleted fork, from an author without write
+# access, whose head moved on while it waited, or that carries the do-not-merge label, and leaves a pull request with
+# a failed check open for a person. Taking do-not-merge off starts the merge again. A release, a pull request from
+# development into the default branch, is reviewed but never merged here: it needs a person's approval.
+# Auto-merge needs contents: write and pull-requests: write from the caller, and actions: read, checks: read and
+# statuses: read to wait for the other checks. This job asks for no permissions of its own, so a caller without
+# auto-merge keeps working with contents: read and pull-requests: write.
+#
+# Callers run it on pull_request_target, so a pull request from a fork gets a review too, with the Scaleway key in
+# reach. That is safe because nothing from the pull request ever runs: this job checks out only the review script
+# from this repository's main branch, and the script reads the pull request's diff and files through the GitHub
+# API as data. pull_request_target also runs the caller workflow from the base branch, and the caller pins this
+# workflow to main, so a pull request that edits either one, or the script, is reviewed by the merged version.
+# The model gets no tools; its answer is only posted as a comment. A caller can also run it with workflow_dispatch
+# and a pull request number, as the protobase bump does for its pull requests, whose events start no workflow.
+#
+# The model and its settings live in .github/ai-review/settings.ts. The caller to copy into a repository is
+# .github/ai-review/caller.yml.
+name: ai-pr-review
+
+on:
+  workflow_call:
+    inputs:
+      framework-generic:
+        description: Add the checks that framework library code stays generic, for Protobase itself.
+        type: boolean
+        default: false
+      auto-merge:
+        description: Merge the pull request once its review finds no issues and every other check passed.
+        type: boolean
+        default: false
+      merge-method:
+        description: How auto-merge merges, squash or merge.
+        type: string
+        default: squash
+      pr-number:
+        description: The pull request to review when the caller runs on workflow_dispatch.
+        type: number
+        default: 0
+      runs-on:
+        description: >-
+          The runner label for the job, such as hetzner-vm for PrototeamHQ's private repositories, whose GitHub-hosted
+          minutes are billed. Public repositories run free on ubuntu-latest.
+        type: string
+        default: ubuntu-latest
+    secrets:
+      SCW_PR_REVIEW_SECRET_KEY:
+        description: The restricted Scaleway key of the github-pr-review application.
+        required: true
+
+jobs:
+  review:
+    # Bots are skipped, except github-actions (user id 41898282, login github-actions[bot]), which opens the protobase
+    # bump pull requests. Of label events only adding the approval label and taking the hold label off count. Every
+    # pull_request_target event, labeled too, carries github.event.pull_request; workflow_dispatch and workflow_run
+    # have none, so they are checked first. A CI run counts only on a branch of this repository, never a fork's.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository) || (
+        !github.event.pull_request.draft &&
+        github.event.pull_request.state == 'open' &&
+        (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282) &&
+        (github.event.action != 'labeled' || github.event.label.name == 'ai-approved') &&
+        (github.event.action != 'unlabeled' || github.event.label.name == 'do-not-merge'))
+    runs-on: ${{ inputs.runs-on }}
+    # No permissions of its own: the job gets the caller's. Every caller grants pull-requests: write for the comment,
+    # as .github/ai-review/caller.yml does; auto-merge also needs contents: write, and actions, checks and statuses
+    # read. A permissions block here would either break the callers that grant contents: read or take write away from
+    # the ones that grant it.
+    timeout-minutes: 15
+    # Label events and CI runs get groups of their own, so neither cancels a review that is still running. A
+    # dispatched review shares the group of push events on purpose: both review the pull request's current head, so
+    # the newer one replaces the older. pr-number defaults to 0, which is falsy in an expression, so || falls through.
+    concurrency:
+      group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number || github.event.workflow_run.head_branch }}-${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && 'label' || github.event_name == 'workflow_run' && 'checks' || 'push' }}
+      cancel-in-progress: true
+    env:
+      # A CI run started with workflow_dispatch names no pull request; merge.ts then finds it by HEAD_BRANCH.
+      PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || '' }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: protobase-community/.github
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/ai-review
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - if: github.event_name != 'workflow_run' && github.event.action != 'labeled' && github.event.action != 'unlabeled'
+        working-directory: .github/ai-review
+        env:
+          REPOSITORY: ${{ github.repository }}
+          FRAMEWORK_GENERIC: ${{ inputs.framework-generic }}
+          AUTO_MERGE: ${{ inputs.auto-merge }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SCW_PR_REVIEW_SECRET_KEY: ${{ secrets.SCW_PR_REVIEW_SECRET_KEY }}
+        run: bun review.ts
+
+      - if: inputs.auto-merge
+        working-directory: .github/ai-review
+        env:
+          REPOSITORY: ${{ github.repository }}
+          MERGE_METHOD: ${{ inputs.merge-method }}
+          RUN_ID: ${{ github.run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun merge.ts

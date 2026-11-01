@@ -1,0 +1,28 @@
+# Releases development into the default branch only on the captain's go; see protobase-community/.github's release
+# workflow. It must be on both branches: a push to development runs development's copy, the schedule, which notices
+# the captain's approval, the default branch's.
+name: release
+
+on:
+  push:
+    branches: [development]
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  checks: read
+  statuses: read
+
+jobs:
+  release:
+    uses: protobase-community/.github/.github/workflows/release.yml@main # zizmor: ignore[unpinned-uses] main is the reviewed version
+    # A private repository runs on the organization's own runners:
+    # with:
+    #   runs-on: hetzner-private
+    secrets:
+      BACKLOG_RELEASE_EMAIL: ${{ secrets.BACKLOG_RELEASE_EMAIL }}
+      BACKLOG_RELEASE_PASSWORD: ${{ secrets.BACKLOG_RELEASE_PASSWORD }}
