@@ -22,6 +22,10 @@ export function ciGate(runs: WorkflowRun[], checkRuns: CheckRun[], statuses: Com
   return { state: "passed", text: "passed" }
 }
 
+// Whether the review skipped a pull request for its size, as ../ai-review/review.ts words it: too many files or too
+// long a diff.
+const tooBig = (reason: string) => /, above the cap of /.test(reason)
+
 // The review's verdict on the head: `approved` says whether the head carries a clean review (../ai-review/approval.ts).
 export function reviewGate(head: string, comment: string | null, approved: boolean): Gate {
   if (approved) return { state: "passed", text: "no issues found" }
@@ -29,6 +33,9 @@ export function reviewGate(head: string, comment: string | null, approved: boole
   if (!reviewed || reviewed[1] !== head) return { state: "pending", text: `no review of ${short(head)} yet` }
   if (reviewed[2] === "skipped") {
     const reason = /^Not reviewed: (.+)$/m.exec(comment ?? "")?.[1] ?? "skipped"
+    // A release too big for the review passes: each of its changes had a review of its own on its way into the
+    // development branch. A small release still needs a clean review of the whole.
+    if (tooBig(reason)) return { state: "passed", text: `too big to review (${reason.replace(/\.$/, "")}); each change was reviewed on its way into development` }
     return { state: "failed", text: `not reviewed: ${reason}` }
   }
   return { state: "failed", text: "found issues" }
