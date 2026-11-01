@@ -1,13 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comment"
-import { limits } from "./settings"
+import { limits, settings } from "./settings"
 
 describe("reviewComment", () => {
-  test("starts with the marker and names the model and the commit", () => {
+  test("starts with the marker and names the commit", () => {
     const body = reviewComment("0123456789abcdef", "No issues found.")
     expect(body).toStartWith(marker)
-    expect(body).toContain("by `qwen3.8-27b` on Scaleway")
-    expect(body).toContain("of 0123456")
+    expect(body).toContain("**AI review** of 0123456.")
     expect(body).toContain("An AI wrote this comment")
     expect(body).toEndWith("No issues found.")
   })
@@ -15,6 +14,20 @@ describe("reviewComment", () => {
   test("cuts off an answer longer than a comment may be", () => {
     const body = reviewComment("0123456", "x".repeat(limits.maxCommentChars + 10))
     expect(body).toEndWith("(cut off)")
+  })
+})
+
+describe("a comment's public text", () => {
+  // The model and its host are settings, never named in a comment: public text names no other company or product.
+  const named = [settings.model, ...new URL(settings.endpoint).hostname.split(".").slice(-2, -1)].map((name) => name.toLowerCase())
+
+  test.each([
+    ["a verdict", reviewComment("0123456", "No issues found.")],
+    ["findings", reviewComment("0123456", "High, a.ts:1, broken.")],
+    ["a non-answer", skipComment("0123456", "the model gave no answer.")],
+    ["an empty answer", reviewComment("0123456", "")],
+  ])("names neither the model nor its host for %s", (_, body) => {
+    for (const name of named) expect(body.toLowerCase()).not.toContain(name)
   })
 })
 

@@ -7,7 +7,6 @@
 // the verdict a draw.
 export const settings = {
   model: "qwen3.8-27b",
-  provider: "Scaleway",
   endpoint: "https://api.scaleway.ai/v1/chat/completions",
   temperature: 0.6,
   maxTokens: 32000,
