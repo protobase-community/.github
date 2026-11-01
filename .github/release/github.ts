@@ -24,6 +24,23 @@ export function gitHub(token: string, repository: string) {
   const json = async <T>(path: string, init: RequestInit = {}) => (await (await request(path, init)).json()) as T
   const body = (value: unknown) => ({ body: JSON.stringify(value) })
 
+  // A branch whose rules take changes only through a pull request: `release/<tag>` at `sha`, a pull request of it
+  // merged with a merge commit at that head only, and the release branch removed again.
+  async function throughPullRequest(branch: string, sha: string, tag: string, message: string) {
+    const head = `release/${tag}`
+    await request(`/repos/${repository}/git/refs`, { method: "POST", ...body({ ref: `refs/heads/${head}`, sha }) })
+    const pull = await json<{ number: number }>(`/repos/${repository}/pulls`, {
+      method: "POST",
+      ...body({ head, base: branch, title: message, body: `The release ${tag}, which the captain approved in the backlog, at ${sha}.` }),
+    })
+    const merged = await json<{ sha: string }>(`/repos/${repository}/pulls/${pull.number}/merge`, {
+      method: "PUT",
+      ...body({ sha, merge_method: "merge", commit_title: message }),
+    })
+    await request(`/repos/${repository}/git/refs/heads/${encodeURIComponent(head)}`, { method: "DELETE" })
+    return merged.sha
+  }
+
   // The branch's head, or null when there is no such branch.
   async function branchHead(branch: string) {
     const response = await send(`/repos/${repository}/branches/${encodeURIComponent(branch)}`)
@@ -124,14 +141,18 @@ export function gitHub(token: string, repository: string) {
       return json<DraftRelease>(`/repos/${repository}/releases`, { method: "POST", ...body(published) })
     },
 
-    // Moves `branch` to `sha` when that is a fast-forward, else merges `sha` into it with a merge commit. Answers the
-    // branch's new head.
-    async advance(branch: string, sha: string, message: string) {
+    // Moves `branch` to `sha` when that is a fast-forward, else merges `sha` into it with a merge commit. A branch whose
+    // rules take changes only through a pull request gets one, from `release/<tag>` at `sha`, merged with a merge
+    // commit. Answers the branch's new head.
+    async advance(branch: string, sha: string, tag: string) {
+      const message = `Release ${tag}`
       const forward = await send(`/repos/${repository}/git/refs/heads/${encodeURIComponent(branch)}`, { method: "PATCH", ...body({ sha, force: false }) })
       if (forward.ok) return sha
       if (forward.status !== 422) throw new Error(`GitHub answered ${forward.status} to moving ${branch} to ${sha}`)
-      const merge = await json<{ sha: string }>(`/repos/${repository}/merges`, { method: "POST", ...body({ base: branch, head: sha, commit_message: message }) })
-      return merge.sha
+      const merge = await send(`/repos/${repository}/merges`, { method: "POST", ...body({ base: branch, head: sha, commit_message: message }) })
+      if (merge.ok) return ((await merge.json()) as { sha: string }).sha
+      if (merge.status !== 409) throw new Error(`GitHub answered ${merge.status} to merging ${sha} into ${branch}`)
+      return throughPullRequest(branch, sha, tag, message)
     },
 
     // Starts a workflow of this repository on `ref`, as its workflow_dispatch trigger takes it.

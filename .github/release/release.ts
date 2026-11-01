@@ -105,7 +105,7 @@ const body = releaseBody(release, decision, link, asked, releaseNotes(draft.body
 if (body !== draft.body) await github.setReleaseBody(draft.id, tag, body)
 
 if (decision.kind === "merge") {
-  const head = await github.advance(base, commit, `Release ${tag}`)
+  const head = await github.advance(base, commit, tag)
   await github.publish(draft.id, tag, head)
   console.log(`${base} is at ${head.slice(0, 7)}; published ${tag}.`)
   if (deployWorkflow) {
