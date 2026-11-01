@@ -1,0 +1,70 @@
+# Moves a repository's beta branch to the newest development commit whose pull request passed its AI review and whose
+# CI passed, once its dev environment runs it healthy, and starts the caller's deploy workflow on beta, whose passing
+# run the beta host deploys (.github/release/build.ts). A push with GITHUB_TOKEN starts no workflow, so this starts it.
+# Callers run it when CI finishes on development and by hand.
+name: release-build
+
+on:
+  workflow_call:
+    inputs:
+      development-branch:
+        type: string
+        default: development
+      beta-branch:
+        type: string
+        default: beta
+      deploy-workflow:
+        description: The caller's workflow file whose passing run on beta the beta host deploys, such as test.yml.
+        type: string
+        required: true
+      deployed-url:
+        description: Where the dev environment says which commit it runs; no dev environment gate when empty.
+        type: string
+        default: ""
+      failed-url:
+        type: string
+        default: ""
+      health-url:
+        type: string
+        default: ""
+      without-ci:
+        type: boolean
+        default: false
+      runs-on:
+        type: string
+        default: ubuntu-latest
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 10
+    # No permissions of its own: the caller grants contents: write for the beta branch, actions: write to start the
+    # deploy workflow, and pull-requests, checks and statuses read for the gates.
+    concurrency:
+      group: release-build-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: protobase-community/.github
+          ref: main
+          persist-credentials: false
+          sparse-checkout: |
+            .github/release
+            .github/ai-review
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - working-directory: .github/release
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+          DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
+          BETA_BRANCH: ${{ inputs.beta-branch }}
+          DEPLOY_WORKFLOW: ${{ inputs.deploy-workflow }}
+          DEPLOYED_URL: ${{ inputs.deployed-url }}
+          FAILED_URL: ${{ inputs.failed-url }}
+          HEALTH_URL: ${{ inputs.health-url }}
+          WITHOUT_CI: ${{ inputs.without-ci }}
+        run: bun build.ts
