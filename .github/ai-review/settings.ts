@@ -22,7 +22,8 @@ export const limits = {
   maxCommentChars: 60_000,
 }
 
-// The label a review that found no issues puts on a pull request when auto-merge is on. Taking it off stops the merge.
+// The label a review that found no issues puts on a pull request when auto-merge is on. Taking it off stops a merge
+// until the next review event puts it back; the hold label below is what keeps a pull request from merging.
 export const approvedLabel = "ai-approved"
 
 // The label that keeps a pull request from being merged automatically, such as one whose merge needs manual steps.
