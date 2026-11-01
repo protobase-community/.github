@@ -12,7 +12,7 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+  pull-requests: read
   # write starts deploy-workflow after a merge; a caller without one grants read.
   actions: write
   checks: read
@@ -21,9 +21,13 @@ permissions:
 jobs:
   release:
     uses: protobase-community/.github/.github/workflows/release.yml@main # zizmor: ignore[unpinned-uses] main is the reviewed version
-    # A private repository runs on the organization's own runners:
+    # A private repository runs on the organization's own runners; a repository with a version tags its releases with
+    # it, and one that ships on a tag starts its release workflow there:
     # with:
     #   runs-on: hetzner-private
+    #   version-file: packages/manager/package.json
+    #   deploy-workflow: release.yml
+    #   deploy-ref: tag
     secrets:
       BACKLOG_RELEASE_EMAIL: ${{ secrets.BACKLOG_RELEASE_EMAIL }}
       BACKLOG_RELEASE_PASSWORD: ${{ secrets.BACKLOG_RELEASE_PASSWORD }}

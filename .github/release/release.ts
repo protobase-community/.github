@@ -1,23 +1,24 @@
-// One pass of a repository's release (../workflows/release.yml): keeps the one pull request from the development
-// branch into the default branch open, held by the do-not-merge label, its body listing what it brings and where its
-// checks stand. Once its head passed CI, a clean AI review and, where there is one, the dev environment, it asks the
-// captain in the backlog, and keeps that one request's text naming the newest head. Once the captain approved the
-// head, while its checks still pass, it merges that exact commit with a merge commit and starts the deploy workflow on
-// the default branch: a merge with GITHUB_TOKEN starts no push workflow of its own. Every pass does all of this again,
-// so a push, the schedule and a dispatch each bring the release up to date.
+// One pass of a repository's release (../workflows/release.yml), as a draft GitHub release. With no draft, it cuts one
+// at the newest development commit that came through a pull request whose AI review passed and whose CI passed, tagged
+// by the date or the repository's version, with GitHub's generated notes. Newer development commits wait for the next
+// release: the draft's commit never moves. Once that commit also runs on the dev environment, where there is one, it
+// asks the captain in the backlog, linking the draft. Once the captain approved that commit, it moves the default
+// branch to it (a fast-forward, else a merge commit), publishes the release, which tags it, and starts the deploy
+// workflow: GITHUB_TOKEN's tag and push start no workflow of their own, so nothing ships twice. Every pass does all of
+// this again, so a push, the schedule and a dispatch each bring the release up to date.
 //
-//   REPOSITORY=owner/name GITHUB_TOKEN=... RUN_ID=... BACKLOG_URL=... BACKLOG_RELEASE_EMAIL=... \
-//     BACKLOG_RELEASE_PASSWORD=... [DEVELOPMENT_BRANCH=development] [DEPLOYED_URL= FAILED_URL= HEALTH_URL=] \
-//     [DEPLOY_WORKFLOW=test.yml] bun release.ts
+//   REPOSITORY=owner/name GITHUB_TOKEN=... [RUN_ID=...] BACKLOG_URL=... BACKLOG_RELEASE_EMAIL=... \
+//     BACKLOG_RELEASE_PASSWORD=... [DEVELOPMENT_BRANCH=development] [VERSION_FILE=package.json] \
+//     [DEPLOYED_URL= FAILED_URL= HEALTH_URL=] [DEPLOY_WORKFLOW=test.yml DEPLOY_REF=branch|tag] bun release.ts
 import { carriesApproval } from "../ai-review/approval"
 import { approvedSha, marker } from "../ai-review/comment"
-import { holdLabel } from "../ai-review/settings"
 import { type Backlog, backlog } from "./backlog"
 import { decide } from "./decide"
 import { devEnvironment } from "./dev-environment"
-import { allPassed, ciGate, devGate, reviewGate } from "./gates"
-import { gitHub } from "./github"
-import { pullRequestBody, type Release, requestId, requestText } from "./text"
+import { allPassed, ciGate, commitGate, devGate, reviewGate } from "./gates"
+import { type DraftRelease, gitHub } from "./github"
+import { releaseBody, releaseMarker, releaseNotes, type Release, requestId, requestText } from "./text"
+import { dateTag, versionTag } from "./tag"
 
 function required(name: string) {
   const value = process.env[name]
@@ -27,37 +28,69 @@ function required(name: string) {
 
 const repository = required("REPOSITORY")
 const development = process.env.DEVELOPMENT_BRANCH || "development"
+const versionFile = process.env.VERSION_FILE || null
 const deployWorkflow = process.env.DEPLOY_WORKFLOW || null
+const deployRef = process.env.DEPLOY_REF || "branch"
 const deployedUrl = process.env.DEPLOYED_URL || null
 const github = gitHub(required("GITHUB_TOKEN"), repository)
 
 const base = await github.defaultBranch()
-// With nothing on development that the default branch lacks, there is nothing to release, ask about or merge: its
-// pull request, if one is open, has no changes, and an approval of an earlier head is never merged, since only the
-// pull request's head is.
-const commits = await github.commitsAhead(base, development)
-if (commits.length === 0) {
-  console.log(`${development} has nothing that ${base} does not have.`)
-  process.exit(0)
+const ownWorkflowId = process.env.RUN_ID ? (await github.workflowRun(Number(process.env.RUN_ID))).workflow_id : 0
+
+// Whether a development commit may be released: the pull request it came through into development, its AI review and
+// CI, and CI on the commit itself where any ran.
+async function commitChecks(sha: string) {
+  const ci = ciGate(await github.workflowRuns(sha), await github.checkRuns(sha), await github.statuses(sha), ownWorkflowId)
+  const through = (await github.commitPullRequests(sha)).find((pull) => pull.merged_at !== null && pull.base.ref === development)
+  if (!through) return commitGate(ci, null)
+  const head = through.head.sha
+  const headCi = ciGate(await github.workflowRuns(head), await github.checkRuns(head), await github.statuses(head), ownWorkflowId)
+  const comment = (await github.reviewComment(through.number, marker))?.body ?? null
+  const reviewed = approvedSha(comment ?? "")
+  const review = reviewGate(head, comment, reviewed !== null && (await carriesApproval(github, head, reviewed, development)))
+  return commitGate(ci, { number: through.number, ci: headCi, review })
 }
 
-const pullRequest =
-  (await github.openPullRequest(development, base)) ??
-  (await github.createPullRequest(development, base, `Release ${development} into ${base}`, "The release workflow fills this in."))
-const head = pullRequest.head.sha
-if (!pullRequest.labels.some((label) => label.name === holdLabel)) await github.addLabel(pullRequest.number, holdLabel)
+// The draft this workflow made, or a new one at the newest commit whose checks passed; null when there is none to make.
+// At most this many of development's newest commits are looked at for one.
+const maxCandidates = 20
+async function currentDraft(): Promise<DraftRelease | null> {
+  const drafts = (await github.releases()).filter((release) => release.draft && release.body?.includes(releaseMarker))
+  if (drafts.length > 0) return drafts.at(-1)!
 
-// The gates of the head.
-const ownWorkflowId = (await github.workflowRun(Number(required("RUN_ID")))).workflow_id
-const ci = ciGate(await github.workflowRuns(head), await github.checkRuns(head), await github.statuses(head), ownWorkflowId)
-const comment = (await github.reviewComment(pullRequest.number, marker))?.body ?? null
-const reviewed = approvedSha(comment ?? "")
-const review = reviewGate(head, comment, reviewed !== null && (await carriesApproval(github, head, reviewed, base)))
+  const ahead = await github.commitsAhead(base, development)
+  if (ahead.length === 0) {
+    console.log(`${development} has nothing that ${base} does not have.`)
+    return null
+  }
+  for (const candidate of ahead.slice(-maxCandidates).reverse()) {
+    const checks = await commitChecks(candidate.sha)
+    console.log(`${candidate.sha.slice(0, 7)}: ${checks.text}`)
+    if (checks.state !== "passed") continue
+    const tag = versionFile ? versionTag(await github.fileAt(versionFile, candidate.sha)) : dateTag(new Date())
+    if (await github.tagExists(tag)) {
+      console.log(`${tag} is released already: ${versionFile ? `raise the version in ${versionFile}` : "try again in a minute"}.`)
+      return null
+    }
+    const notes = await github.generatedNotes(tag, candidate.sha)
+    return github.createDraft(tag, candidate.sha, tag, `${releaseMarker}\n<!-- release-notes -->\n${notes}\n`)
+  }
+  console.log(`No commit of the newest ${maxCandidates} on ${development} has passed its checks yet.`)
+  return null
+}
+
+const draft = await currentDraft()
+if (draft === null) process.exit(0)
+const commit = draft.target_commitish
+if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`The draft ${draft.tag_name} targets ${commit}, not a commit`)
+
+const commits = await github.commitsAhead(base, commit)
+const checks = await commitChecks(commit)
 const dev = deployedUrl
-  ? devGate(head, await devEnvironment({ deployedUrl, failedUrl: process.env.FAILED_URL || "", healthUrl: required("HEALTH_URL") }))
+  ? await devEnvironment({ deployedUrl, failedUrl: process.env.FAILED_URL || "", healthUrl: required("HEALTH_URL") })
   : null
-const release: Release = { repository, base, development, head, url: pullRequest.html_url, commits, gates: { ci, review, dev } }
-const passed = allPassed(release.gates)
+const devCheck = dev ? devGate(commit, { ...dev, hasCommit: dev.deployed !== null && (await github.contains(dev.deployed, commit)) }) : null
+const release: Release = { repository, base, development, commit, tag: draft.tag_name, url: draft.html_url, commits, gates: { commit: checks, dev: devCheck } }
 
 // The backlog, signed in only when there is a request to read or one to ask: the app allows few sign-ins a minute.
 let signedIn: Backlog | null = null
@@ -65,29 +98,29 @@ const backlogApp = async () => {
   signedIn ??= await backlog(required("BACKLOG_URL"), required("BACKLOG_RELEASE_EMAIL"), required("BACKLOG_RELEASE_PASSWORD"))
   return signedIn
 }
-const named = requestId(pullRequest.body)
+const named = requestId(draft.body)
 const request = named === null ? null : await (await backlogApp()).request(named)
-const decision = decide(head, passed, request)
-console.log(`Head ${head.slice(0, 7)}: CI ${ci.text}; AI review ${review.text}${dev ? `; dev ${dev.text}` : ""}. ${decision.kind}.`)
+const decision = decide(commit, allPassed(release.gates), request)
+console.log(`${draft.tag_name} at ${commit.slice(0, 7)}: ${checks.text}${devCheck ? `; dev ${devCheck.text}` : ""}. ${decision.kind}.`)
 
 let asked = request?.id ?? null
 const text = requestText(release)
 if (decision.kind === "ask") {
   const app = await backlogApp()
-  asked = await app.ask(await app.ensureTask(repository, pullRequest.html_url), text)
+  asked = await app.ask(await app.ensureTask(repository, draft.html_url), text)
 }
 if (decision.kind === "update" && JSON.stringify(request?.text) !== JSON.stringify(text)) await (await backlogApp()).update(decision.id, text)
 
 const link = asked === null || signedIn === null ? null : (signedIn as Backlog).link(asked)
-const body = pullRequestBody(release, decision, link, asked)
-if (body !== pullRequest.body) await github.setBody(pullRequest.number, body)
+const body = releaseBody(release, decision, link, asked, releaseNotes(draft.body))
+if (body !== draft.body) await github.setReleaseBody(draft.id, body)
 
 if (decision.kind === "merge") {
-  await github.removeLabel(pullRequest.number, holdLabel)
-  await github.merge(pullRequest.number, head, "merge")
-  console.log(`Merged ${head.slice(0, 7)} into ${base}.`)
+  const head = await github.advance(base, commit, `Release ${draft.tag_name}`)
+  await github.publish(draft.id, head)
+  console.log(`${base} is at ${head.slice(0, 7)}; published ${draft.tag_name}.`)
   if (deployWorkflow) {
-    await github.dispatch(deployWorkflow, base)
-    console.log(`Started ${deployWorkflow} on ${base}.`)
+    await github.dispatch(deployWorkflow, deployRef === "tag" ? draft.tag_name : base)
+    console.log(`Started ${deployWorkflow} on ${deployRef === "tag" ? draft.tag_name : base}.`)
   }
 }
