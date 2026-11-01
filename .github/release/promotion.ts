@@ -2,13 +2,13 @@
 import type { BacklogTask } from "./backlog"
 import type { Gate } from "./gates"
 
-// A deploy result of the beta host, as central lists them newest first (protobase-cloud's /deploys/hosts/:host).
+// A deploy result of a host, as central lists them newest first (protobase-cloud's /deploys/hosts/:host).
 export type HostResult = { sha: string; state: string; updatedAt: string }
 
 const short = (sha: string) => sha.slice(0, 7)
 
-// The commits the beta host deployed, newest first, each with when it went live there.
-export function deployedOnBeta(results: HostResult[]) {
+// The commits a host deployed, newest first, each with when it went live there.
+export function deployedOn(results: HostResult[]) {
   const seen = new Set<string>()
   return results
     .filter((result) => result.state === "success" && !seen.has(result.sha) && seen.add(result.sha))
@@ -60,4 +60,10 @@ export function scenariosGate(sha: string, tasks: BacklogTask[]): Gate {
 // The hour it is in Amsterdam: GitHub's cron is UTC, so the schedule runs at both 04:00 and 05:00 UTC and acts at 06:00.
 export function amsterdamHour(now: Date) {
   return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Amsterdam", hour: "2-digit", hourCycle: "h23" }).format(now))
+}
+
+// Whether the stable host should go back to the release before: it deployed the newest release, has not gone back
+// already, and Bugsink first saw at least `threshold` issues since, within the watch after the promotion.
+export function rollbackDue(o: { liveSince: Date | null; rolledBack: boolean; newIssues: number; threshold: number }) {
+  return o.liveSince !== null && !o.rolledBack && o.newIssues >= o.threshold
 }

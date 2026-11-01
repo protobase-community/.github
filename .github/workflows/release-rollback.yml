@@ -1,0 +1,82 @@
+# Watches a promotion for the hours after it (.github/release/rollback.ts): once the stable host deployed the newest
+# release, Bugsink first seeing issues since then sends that host back to the release before, through central's
+# rollback, and files a notice for Firstmate in the backlog. Callers run it every hour.
+name: release-rollback
+
+on:
+  workflow_call:
+    inputs:
+      stable-host:
+        type: string
+        required: true
+      central-url:
+        description: Central's address, such as https://console.protobase.net.
+        type: string
+        required: true
+      bugsink-url:
+        type: string
+        default: https://errors.protobase.net
+      bugsink-projects:
+        type: string
+        required: true
+      watch-hours:
+        type: number
+        default: 24
+      new-issues:
+        description: How many issues first seen on the stable host since the release went live send it back.
+        type: number
+        default: 1
+      runs-on:
+        type: string
+        default: ubuntu-latest
+      backlog-url:
+        type: string
+        default: https://firstmate-backlog.protobase.net
+    secrets:
+      DEPLOY_ROLLBACK_TOKEN:
+        description: Central's rollback token (control_panel_deploy_rollback_token).
+        required: true
+      BUGSINK_TOKEN:
+        required: true
+      BACKLOG_RELEASE_EMAIL:
+        required: true
+      BACKLOG_RELEASE_PASSWORD:
+        required: true
+
+jobs:
+  watch:
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 10
+    # No permissions of its own: the caller grants contents: read for the releases.
+    concurrency:
+      group: release-rollback-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: protobase-community/.github
+          ref: main
+          persist-credentials: false
+          sparse-checkout: |
+            .github/release
+            .github/ai-review
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - working-directory: .github/release
+        env:
+          REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          STABLE_HOST: ${{ inputs.stable-host }}
+          STABLE_RESULTS_URL: ${{ inputs.central-url }}/deploys/hosts/${{ inputs.stable-host }}
+          ROLLBACK_URL: ${{ inputs.central-url }}/deploys/hosts/${{ inputs.stable-host }}/rollback
+          DEPLOY_ROLLBACK_TOKEN: ${{ secrets.DEPLOY_ROLLBACK_TOKEN }}
+          BUGSINK_URL: ${{ inputs.bugsink-url }}
+          BUGSINK_TOKEN: ${{ secrets.BUGSINK_TOKEN }}
+          BUGSINK_PROJECTS: ${{ inputs.bugsink-projects }}
+          WATCH_HOURS: ${{ inputs.watch-hours }}
+          NEW_ISSUES: ${{ inputs.new-issues }}
+          BACKLOG_URL: ${{ inputs.backlog-url }}
+          BACKLOG_RELEASE_EMAIL: ${{ secrets.BACKLOG_RELEASE_EMAIL }}
+          BACKLOG_RELEASE_PASSWORD: ${{ secrets.BACKLOG_RELEASE_PASSWORD }}
+        run: bun rollback.ts

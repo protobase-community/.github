@@ -20,7 +20,7 @@ import { bugsink } from "./bugsink"
 import { commitChecks } from "./commit-checks"
 import type { Gate } from "./gates"
 import { gitHub } from "./github"
-import { amsterdamHour, deployedOnBeta, errorsGate, type HostResult, reportsGate, riskyFiles, scenariosGate, soakGate } from "./promotion"
+import { amsterdamHour, deployedOn, errorsGate, type HostResult, reportsGate, riskyFiles, scenariosGate, soakGate } from "./promotion"
 import { dateTag } from "./tag"
 
 function required(name: string) {
@@ -49,7 +49,7 @@ const base = await github.defaultBranch()
 // The builds the beta host runs or ran that the default branch does not have yet, newest first.
 const results = (await (await fetch(required("BETA_RESULTS_URL"), { signal: AbortSignal.timeout(30_000) })).json()) as { results: HostResult[] }
 const builds = []
-for (const build of deployedOnBeta(results.results)) {
+for (const build of deployedOn(results.results)) {
   // A hotfix goes out in the newest build that has it.
   if (hotfix && !(await github.contains(build.sha, hotfix))) continue
   if (await github.contains(base, build.sha)) continue

@@ -107,6 +107,17 @@ export function gitHub(token: string, repository: string) {
       return files.map((file) => file.filename)
     },
 
+    // The repository's published releases, newest first.
+    async publishedReleases() {
+      return (await json<(DraftRelease & { created_at: string; prerelease: boolean })[]>(`/repos/${repository}/releases?per_page=20`))
+        .filter((release) => !release.draft && !release.prerelease)
+    },
+
+    // The commit a tag or branch names.
+    async commitOf(ref: string) {
+      return (await json<{ sha: string }>(`/repos/${repository}/commits/${encodeURIComponent(ref)}`)).sha
+    },
+
     // A published release at `target`, which creates its tag, with GitHub's generated notes.
     async release(tag: string, target: string) {
       const published = { tag_name: tag, target_commitish: target, name: tag, generate_release_notes: true, make_latest: "true" }

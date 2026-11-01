@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import type { BacklogTask } from "./backlog"
-import { amsterdamHour, deployedOnBeta, errorsGate, reportsGate, riskyFiles, scenariosGate, soakGate } from "./promotion"
+import { amsterdamHour, deployedOn, errorsGate, reportsGate, riskyFiles, rollbackDue, scenariosGate, soakGate } from "./promotion"
 
 const a = "a".repeat(40)
 const b = "b".repeat(40)
 const task = (id: string, o: Partial<BacklogTask> = {}): BacklogTask => ({ id, title: id, status: "done", state: "done", cancelled: false, priority: null, ...o })
 
-test("takes each commit the beta host deployed once, newest first", () => {
-  expect(deployedOnBeta([
+test("takes each commit a host deployed once, newest first", () => {
+  expect(deployedOn([
     { sha: b, state: "running", updatedAt: "2026-11-02T10:00:00Z" },
     { sha: a, state: "success", updatedAt: "2026-11-01T09:00:00Z" },
     { sha: a, state: "success", updatedAt: "2026-10-31T09:00:00Z" },
@@ -63,4 +63,12 @@ describe("scenariosGate", () => {
 test("tells the hour in Amsterdam, summer and winter", () => {
   expect(amsterdamHour(new Date("2026-11-02T05:00:00Z"))).toBe(6)
   expect(amsterdamHour(new Date("2026-07-01T04:00:00Z"))).toBe(6)
+})
+
+test("rolls back once, when new issues reach the threshold after the stable host deployed the release", () => {
+  const liveSince = new Date("2026-11-02T06:30:00Z")
+  expect(rollbackDue({ liveSince, rolledBack: false, newIssues: 1, threshold: 1 })).toBe(true)
+  expect(rollbackDue({ liveSince, rolledBack: false, newIssues: 0, threshold: 1 })).toBe(false)
+  expect(rollbackDue({ liveSince, rolledBack: true, newIssues: 5, threshold: 1 })).toBe(false)
+  expect(rollbackDue({ liveSince: null, rolledBack: false, newIssues: 5, threshold: 1 })).toBe(false)
 })
