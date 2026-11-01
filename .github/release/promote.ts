@@ -7,7 +7,8 @@
 // - no failed backup or restore check since then (Bugsink's backups project);
 // - no open serious beta report;
 // - when it changes risky places, its integration review and every scenario done.
-// A gate that fails files one notice for Firstmate in the backlog. A hotfix (HOTFIX_SHA) skips only the soak. On its
+// A gate that fails files one notice for Firstmate in the backlog. A hotfix (HOTFIX_SHA) goes out in the newest build that
+// has it, and skips only the soak. On its
 // schedule it acts at 06:00 in Amsterdam alone.
 //
 //   REPOSITORY=owner/name GITHUB_TOKEN=... [RUN_ID=...] BETA_RESULTS_URL=https://console.protobase.net/deploys/hosts/eu2 \
@@ -49,7 +50,8 @@ const base = await github.defaultBranch()
 const results = (await (await fetch(required("BETA_RESULTS_URL"), { signal: AbortSignal.timeout(30_000) })).json()) as { results: HostResult[] }
 const builds = []
 for (const build of deployedOnBeta(results.results)) {
-  if (hotfix && build.sha !== hotfix) continue
+  // A hotfix goes out in the newest build that has it.
+  if (hotfix && !(await github.contains(build.sha, hotfix))) continue
   if (await github.contains(base, build.sha)) continue
   if (!(await github.contains(beta, build.sha))) continue
   builds.push(build)
