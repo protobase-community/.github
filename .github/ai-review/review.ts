@@ -13,7 +13,7 @@ import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
 import { contentPaths, fitUserMessage } from "./pull-request"
 import { complete } from "./scaleway"
 import { approvedLabel, limits } from "./settings"
-import { skipReason } from "./verdict"
+import { emptyAnswerReasoning, skipReason } from "./verdict"
 
 function required(name: string) {
   const value = process.env[name]
@@ -98,6 +98,8 @@ const system = buildSystemPrompt(await loadTemplates(), {
 // review says so instead of asking again.
 const completion = await complete(key, system, user)
 console.log(`finish=${completion.finish} usage=${JSON.stringify(completion.usage)}`)
+const reasoning = emptyAnswerReasoning(completion)
+if (reasoning !== null) console.log(`The answer is empty; the reasoning ends with:\n${reasoning}`)
 
 const reason = skipReason(completion)
 await github.upsertComment(number, marker, reason ? skipComment(sha, reason) : reviewComment(sha, completion.content))
