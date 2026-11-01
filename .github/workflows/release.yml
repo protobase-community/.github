@@ -1,14 +1,14 @@
-# Releases a repository's development branch into its default branch only on the captain's go (.github/release/
-# release.ts). Each run keeps the one release pull request open and held by the do-not-merge label, its body listing
-# the commits and where its head's checks stand: CI, the AI review (ai-pr-review.yml; a release too big for it passes,
-# as each change was reviewed on its way into development) and, when the caller names one,
-# its dev environment, which must run that exact commit and be healthy. Once all three passed, it asks the captain in
-# the backlog app, which emails them, as a precondition of the repository's release task; a newer head updates the
-# same pull request and the same request. Once the captain approved the head, while its checks still pass, the run
-# merges that exact commit with a merge commit, using GITHUB_TOKEN, and starts the caller's deploy workflow on the
-# default branch, since a merge with GITHUB_TOKEN starts no push workflow.
+# Releases a repository's development branch into its default branch only on the captain's go, as a draft GitHub
+# release (.github/release/release.ts). With no draft, a run cuts one at the newest development commit that came
+# through a pull request whose AI review (ai-pr-review.yml) and CI passed, tagged with the caller's version file's
+# version or the UTC date and time, with GitHub's generated notes; newer commits wait for the next release. Once that
+# commit also runs healthy on the caller's dev environment, when it names one, it asks the captain in the backlog app,
+# which emails them, linking the draft. Once the captain approved it, the run moves the default branch to that commit
+# (a fast-forward, else a merge commit), publishes the release, which creates its tag, and starts the caller's deploy
+# workflow on the default branch or the tag: a push and a tag made with GITHUB_TOKEN start no workflow, so nothing ships
+# twice.
 #
-# Callers run it on a push to the development branch, on a schedule, which is how an approval is noticed, and by hand;
+# Callers run it on a push to development, on a schedule, which is how an approval is noticed, and by hand;
 # the schedule runs only the default branch's copy of the caller. It checks out only the scripts of this repository's
 # main and runs nothing from the caller's repository. The caller to copy is .github/release/caller.yml.
 name: release
@@ -20,10 +20,18 @@ on:
         description: The branch that is released into the default branch.
         type: string
         default: development
-      deploy-workflow:
-        description: The caller's workflow file to start on the default branch after a merge, such as test.yml; none when empty.
+      version-file:
+        description: A JSON file whose version tags the release (v<version>), such as packages/manager/package.json; the UTC date and time when empty.
         type: string
         default: ""
+      deploy-workflow:
+        description: The caller's workflow file to start once the release is published, such as test.yml; none when empty.
+        type: string
+        default: ""
+      deploy-ref:
+        description: Where the deploy workflow starts, on the default branch (branch) or on the release's tag (tag).
+        type: string
+        default: branch
       deployed-url:
         description: Where the dev environment says which commit it runs; no dev environment gate when empty.
         type: string
@@ -56,8 +64,8 @@ jobs:
   release:
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 10
-    # No permissions of its own: the caller grants contents: write and pull-requests: write for the pull request and
-    # its merge, actions, checks and statuses read for the gates, and actions: write only when it names a
+    # No permissions of its own: the caller grants contents: write for the draft, the default branch and the tag,
+    # pull-requests, actions, checks and statuses read for the gates, and actions: write only when it names a
     # deploy-workflow to start; without one, actions: read is enough.
     # One run at a time per repository; a newer one waits rather than cancelling one that may be merging.
     concurrency:
@@ -82,7 +90,9 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           GITHUB_TOKEN: ${{ github.token }}
           DEVELOPMENT_BRANCH: ${{ inputs.development-branch }}
+          VERSION_FILE: ${{ inputs.version-file }}
           DEPLOY_WORKFLOW: ${{ inputs.deploy-workflow }}
+          DEPLOY_REF: ${{ inputs.deploy-ref }}
           DEPLOYED_URL: ${{ inputs.deployed-url }}
           FAILED_URL: ${{ inputs.failed-url }}
           HEALTH_URL: ${{ inputs.health-url }}
