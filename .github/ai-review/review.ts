@@ -2,7 +2,8 @@
 // It reads the pull request only through the GitHub API, as data, and never checks out or runs its code.
 //
 // With AUTO_MERGE=true a review that finds no issues also puts the approval label on, and any other review takes it
-// off. A head that still carries an earlier approval, because it only merged the base branch in, is not reviewed again.
+// off. A head that still carries an earlier approval, because it only merged the base branch in, is not reviewed again
+// and keeps or gets the label.
 //
 //   REPOSITORY=owner/name PR_NUMBER=1 GITHUB_TOKEN=... SCW_PR_REVIEW_SECRET_KEY=... [AUTO_MERGE=true] bun review.ts
 import { carriesApproval } from "./approval"
@@ -37,8 +38,11 @@ if (pullRequest.state !== "open" || pullRequest.draft) {
 
 if (autoMerge) {
   const approved = approvedSha((await github.reviewComment(number, marker))?.body ?? "")
+  // A head that carries an approval gets the label too: the approval may come from a review made before auto-merge
+  // was on, which put no label on. The do-not-merge label, not this one, is how a person holds a merge back.
   if (approved !== null && (await carriesApproval(github, sha, approved, pullRequest.base.ref))) {
     console.log(`Not reviewed again: ${sha.slice(0, 7)} carries the approval of ${approved.slice(0, 7)}.`)
+    if (!pullRequest.labels.some((label) => label.name === approvedLabel)) await github.addLabel(number, approvedLabel)
     process.exit(0)
   }
   if (pullRequest.labels.some((label) => label.name === approvedLabel)) await github.removeLabel(number, approvedLabel)
