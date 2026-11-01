@@ -1,8 +1,10 @@
 // The model and request settings for every AI review. Switching models is a change to `model` alone.
 // Settings come from the Scaleway review benchmark: temperature 0.6 and high reasoning effort. The output cap is
-// Scaleway's 32k maximum for this model, because on a big pull request high effort can reason past 16k. Now and then
-// high effort keeps reasoning until the cap without answering, and medium can do the same, so an empty answer is asked
-// for again with medium and then with low.
+// Scaleway's 32k maximum for this model. max_tokens counts reasoning and answer together, and now and then the model
+// reasons until that cap without answering, so the reasoning has its own budget: vLLM's thinking_token_budget, which
+// Scaleway enforces on this model though its docs leave it out. It ends the reasoning at 20k, which a normal review
+// stays under, and leaves the rest of the cap for the answer. A review asks the model once and never again: its answer
+// differs from one ask to the next, so asking again until one passes would make the verdict a draw.
 export const settings = {
   model: "qwen3.6-35b-a3b",
   provider: "Scaleway",
@@ -10,7 +12,7 @@ export const settings = {
   temperature: 0.6,
   maxTokens: 32000,
   reasoningEffort: "high",
-  retryReasoningEfforts: ["medium", "low"],
+  thinkingTokenBudget: 20000,
 }
 
 // What a review may send. Above maxInputChars, full file contents are left out until the whole diff fits; a pull
