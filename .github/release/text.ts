@@ -52,6 +52,12 @@ export function requestedSha(why: string | null) {
   return /^Commit: ([0-9a-f]{40})$/m.exec(why ?? "")?.[1] ?? null
 }
 
+// The tag a draft release's body names, or null: GitHub answers a draft's own tag_name as untagged-<id> once it was
+// changed, so the body keeps it.
+export function releaseTag(body: string | null) {
+  return /^<!-- release-tag: (\S+) -->$/m.exec(body ?? "")?.[1] ?? null
+}
+
 // The request a draft release's body names, or null.
 export function requestId(body: string | null) {
   const id = /^<!-- release-request: (\d+) -->$/m.exec(body ?? "")?.[1]
@@ -76,6 +82,7 @@ function approvalLine(decision: Decision, link: string | null) {
 export function releaseBody(release: Release, decision: Decision, link: string | null, request: number | null, notes: string) {
   const lines = [
     releaseMarker,
+    `<!-- release-tag: ${release.tag} -->`,
     ...(request === null ? [] : [`<!-- release-request: ${request} -->`]),
     `\`${release.development}\` at ${short(release.commit)}, kept up to date by the release workflow ` +
       `(protobase-community/.github's \`release.yml\`). Once the captain approves this commit in the backlog, \`${release.base}\` ` +

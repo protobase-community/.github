@@ -9,6 +9,8 @@ export type Gates = { commit: Gate; dev: Gate | null }
 
 const short = (sha: string) => sha.slice(0, 7)
 
+const noCi = "no CI ran on it yet"
+
 export function allPassed(gates: Gates) {
   return [gates.commit, gates.dev].every((gate) => gate === null || gate.state === "passed")
 }
@@ -16,7 +18,7 @@ export function allPassed(gates: Gates) {
 // Everything else that ran on the head passed, and something did: a head no CI ran on yet has passed nothing.
 export function ciGate(runs: WorkflowRun[], checkRuns: CheckRun[], statuses: CommitStatus[], ownWorkflowId: number): Gate {
   const others = runs.filter((run) => run.workflow_id !== ownWorkflowId)
-  if (others.length === 0 && statuses.length === 0) return { state: "pending", text: "no CI ran on it yet" }
+  if (others.length === 0 && statuses.length === 0) return { state: "pending", text: noCi }
   const checks = checksState(runs, checkRuns, statuses, ownWorkflowId)
   if (checks.state === "red") return { state: "failed", text: `failed: ${checks.names.join(", ")}` }
   if (checks.state === "pending") return { state: "pending", text: `running: ${checks.names.join(", ")}` }
@@ -41,10 +43,14 @@ export type ThroughPullRequest = { number: number; ci: Gate; review: Gate }
 
 // A development commit may be released once it came through a pull request whose AI review passed, and CI passed on it,
 // or, where no CI ran on the commit itself, as on a squash merge, on that pull request's head.
-export function commitGate(ci: Gate, through: ThroughPullRequest | null): Gate {
+// A repository without CI, whose only check is the AI review, says so with `withoutCi`: no CI on the commit or its pull
+// request is then no wait.
+export function commitGate(ci: Gate, through: ThroughPullRequest | null, withoutCi = false): Gate {
   if (through === null) return { state: "failed", text: "it came through no pull request, so no AI review" }
   if (through.review.state !== "passed") return { ...through.review, text: `#${through.number}'s AI review: ${through.review.text}` }
-  const ran = ci.text === "no CI ran on it yet" ? { ...through.ci, text: `#${through.number}'s CI ${through.ci.text}` } : { ...ci, text: `CI ${ci.text}` }
+  const none = (gate: Gate) => gate.text === noCi
+  if (withoutCi && none(ci) && none(through.ci)) return { state: "passed", text: `no CI here; #${through.number}'s AI review: ${through.review.text}` }
+  const ran = none(ci) ? { ...through.ci, text: `#${through.number}'s CI ${through.ci.text}` } : { ...ci, text: `CI ${ci.text}` }
   if (ran.state !== "passed") return ran
   return { state: "passed", text: `${ran.text}; #${through.number}'s AI review: ${through.review.text}` }
 }

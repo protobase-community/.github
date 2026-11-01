@@ -23,6 +23,9 @@ permissions:
 jobs:
   release:
     uses: protobase-community/.github/.github/workflows/release.yml@main # zizmor: ignore[unpinned-uses] main is the reviewed version
+    # Its only check is the AI review: it has no CI.
+    with:
+      without-ci: true
     secrets:
       BACKLOG_RELEASE_EMAIL: ${{ secrets.BACKLOG_RELEASE_EMAIL }}
       BACKLOG_RELEASE_PASSWORD: ${{ secrets.BACKLOG_RELEASE_PASSWORD }}

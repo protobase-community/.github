@@ -70,13 +70,15 @@ export function gitHub(token: string, repository: string) {
       return json<DraftRelease>(`/repos/${repository}/releases`, { method: "POST", ...body(draft) })
     },
 
-    async setReleaseBody(id: number, text: string) {
-      await request(`/repos/${repository}/releases/${id}`, { method: "PATCH", ...body({ body: text }) })
+    // Each change names the tag again, which GitHub otherwise forgets on a draft.
+    async setReleaseBody(id: number, tag: string, text: string) {
+      await request(`/repos/${repository}/releases/${id}`, { method: "PATCH", ...body({ tag_name: tag, body: text }) })
     },
 
     // Publishes a draft, which creates its tag at `target`.
-    async publish(id: number, target: string) {
-      await request(`/repos/${repository}/releases/${id}`, { method: "PATCH", ...body({ draft: false, target_commitish: target, make_latest: "true" }) })
+    async publish(id: number, tag: string, target: string) {
+      const published = { tag_name: tag, draft: false, target_commitish: target, make_latest: "true" }
+      await request(`/repos/${repository}/releases/${id}`, { method: "PATCH", ...body(published) })
     },
 
     // Moves `branch` to `sha` when that is a fast-forward, else merges `sha` into it with a merge commit. Answers the

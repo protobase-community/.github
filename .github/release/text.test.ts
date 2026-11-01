@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { releaseBody, releaseNotes, requestedSha, requestId, requestText, type Release } from "./text"
+import { releaseBody, releaseNotes, releaseTag, requestedSha, requestId, requestText, type Release } from "./text"
 
 const commit = "a".repeat(40)
 const release: Release = {
@@ -45,6 +45,7 @@ describe("releaseBody", () => {
   test("names the request it asked and keeps the generated notes, which read back", () => {
     const body = releaseBody(release, { kind: "update", id: 12 }, "https://backlog.example.com/task_preconditions/12", 12, "## What's Changed\n* A change")
     expect(requestId(body)).toBe(12)
+    expect(releaseTag(body)).toBe("v2026-11-01-0900")
     expect(releaseNotes(body)).toBe("## What's Changed\n* A change")
     expect(body).toContain("**Approval:** Waiting on the captain in the backlog (https://backlog.example.com/task_preconditions/12).")
     expect(body).toContain("- Dev environment: runs bbbbbbb, which does not have aaaaaaa yet")
@@ -60,6 +61,7 @@ describe("releaseBody", () => {
 
   test("reads no request or notes from a body without them", () => {
     expect(requestId(null)).toBeNull()
+    expect(releaseTag(null)).toBeNull()
     expect(releaseNotes("A release")).toBe("")
   })
 })
