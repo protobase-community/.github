@@ -25,10 +25,16 @@ export function gitHub(token: string, repository: string) {
   const body = (value: unknown) => ({ body: JSON.stringify(value) })
 
   // A branch whose rules take changes only through a pull request: `release/<tag>` at `sha`, a pull request of it
-  // merged with a merge commit at that head only, and the release branch removed again.
+  // merged with a merge commit at that head only, and the release branch removed again. A release branch that a failed
+  // run left behind is moved to `sha` rather than stopping every later run.
   async function throughPullRequest(branch: string, sha: string, tag: string, message: string) {
     const head = `release/${tag}`
-    await request(`/repos/${repository}/git/refs`, { method: "POST", ...body({ ref: `refs/heads/${head}`, sha }) })
+    const created = await send(`/repos/${repository}/git/refs`, { method: "POST", ...body({ ref: `refs/heads/${head}`, sha }) })
+    if (created.status === 422) {
+      await request(`/repos/${repository}/git/refs/heads/${encodeURIComponent(head)}`, { method: "PATCH", ...body({ sha, force: true }) })
+    } else if (!created.ok) {
+      throw new Error(`GitHub answered ${created.status} to creating ${head}`)
+    }
     const pull = await json<{ number: number }>(`/repos/${repository}/pulls`, {
       method: "POST",
       ...body({ head, base: branch, title: message, body: `The release ${tag}, which the captain approved in the backlog, at ${sha}.` }),

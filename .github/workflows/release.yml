@@ -69,8 +69,9 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 10
     # No permissions of its own: the caller grants contents: write for the draft, the default branch and the tag,
-    # pull-requests, actions, checks and statuses read for the gates, and actions: write only when it names a
-    # deploy-workflow to start; without one, actions: read is enough.
+    # pull-requests: write for the release's pull request where the default branch takes changes only through one,
+    # actions, checks and statuses read for the gates, and actions: write only when it names a deploy-workflow to start;
+    # without one, actions: read is enough.
     # One run at a time per repository; a newer one waits rather than cancelling one that may be merging.
     concurrency:
       group: release-${{ github.repository }}
