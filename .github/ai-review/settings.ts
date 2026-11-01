@@ -1,10 +1,11 @@
 // The model and request settings for every AI review. Switching models is a change to `model` alone.
 // Settings come from the Scaleway model reliability benchmark: qwen3.8-27b made no false claims and caught every known
 // real bug, at temperature 0.6 and medium reasoning effort (it offers no high). The output cap is Scaleway's 32k
-// maximum. max_tokens counts reasoning and answer together, so now and then the model reasons until that cap without
-// answering, and the review then says it was not reviewed. Only settings Scaleway documents are sent. A review asks the
-// model once and never again: its answer differs from one ask to the next, so asking again until one passes would make
-// the verdict a draw.
+// maximum. max_tokens counts reasoning and answer together. Now and then the model gives no answer, and the review
+// then says it was not reviewed: it can reason until that cap, or end its reasoning well below it with an empty
+// reply, whose reasoning the job log then shows. Only settings Scaleway documents are sent. A review asks the model
+// once and never again: its answer differs from one ask to the next, so asking again until one passes would make the
+// verdict a draw.
 export const settings = {
   model: "qwen3.8-27b",
   endpoint: "https://api.scaleway.ai/v1/chat/completions",
