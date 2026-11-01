@@ -44,6 +44,17 @@ describe("complete", () => {
     expect(completion.finish).toBe("stop")
   })
 
+  // Scaleway's streaming documentation for its Qwen reasoning models sends the reasoning in `delta.reasoning`.
+  test("keeps the reasoning Scaleway streams in delta.reasoning", async () => {
+    stream(
+      { choices: [{ delta: { reasoning: "So the verdict: " } }] },
+      { choices: [{ delta: { reasoning: "No issues found." } }] },
+      { choices: [{ delta: { content: "\n\n" }, finish_reason: "stop" }] },
+    )
+    const completion = await complete("key", "system", "user")
+    expect(completion.reasoning).toBe("So the verdict: No issues found.")
+  })
+
   test("fails on an error inside the stream", async () => {
     stream({ choices: [{ delta: { content: "Partial" } }] }, { error: { message: "overloaded", code: 500 } })
     await expect(complete("key", "system", "user")).rejects.toThrow("an error in the response stream")
