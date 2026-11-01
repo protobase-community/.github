@@ -47,7 +47,8 @@ export async function complete(key: string, system: string, user: string): Promi
       const choice = event.choices?.[0]
       if (!choice) continue
       content += choice.delta?.content ?? ""
-      reasoning += choice.delta?.reasoning_content ?? ""
+      // Scaleway streams a Qwen model's reasoning in `reasoning`; `reasoning_content`, its non-streaming name, is read too.
+      reasoning += choice.delta?.reasoning ?? choice.delta?.reasoning_content ?? ""
       if (choice.finish_reason) finish = choice.finish_reason
     }
   }
