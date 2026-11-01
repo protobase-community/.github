@@ -11,7 +11,7 @@ const passed = new Set(["success", "skipped", "neutral"])
 
 // The newest run of each workflow for each event, from runs listed newest first, as GitHub lists them. A run that
 // waits for approval never ran, such as the pull_request run of a push made with GITHUB_TOKEN; it is left out when
-// the same workflow has a run for another event, such as the protobase bump's workflow_dispatch run of CI.
+// the same workflow has a run for another event, such as a workflow_dispatch run of CI on the same commit.
 function latestRuns(runs: WorkflowRun[]) {
   const seen = new Set<string>()
   const latest = runs.filter((run) => {
