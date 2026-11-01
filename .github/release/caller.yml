@@ -12,7 +12,8 @@ on:
 
 permissions:
   contents: write
-  pull-requests: read
+  # write opens and merges the release's pull request where the default branch takes changes only through one.
+  pull-requests: write
   # write starts deploy-workflow after a merge; a caller without one grants read.
   actions: write
   checks: read

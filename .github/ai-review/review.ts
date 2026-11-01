@@ -11,8 +11,9 @@ import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comm
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
 import { contentPaths, fitUserMessage } from "./pull-request"
-import { completeAnswer } from "./scaleway"
+import { complete } from "./scaleway"
 import { approvedLabel, limits } from "./settings"
+import { skipReason } from "./verdict"
 
 function required(name: string) {
   const value = process.env[name]
@@ -93,12 +94,11 @@ const system = buildSystemPrompt(await loadTemplates(), {
   rules: await rules(),
 })
 
-const completion = await completeAnswer(key, system, user)
+// One ask only: an empty answer, or a clean one cut off at the output cap, is not a pass, and the
+// review says so instead of asking again.
+const completion = await complete(key, system, user)
 console.log(`finish=${completion.finish} usage=${JSON.stringify(completion.usage)}`)
 
-const body =
-  completion.finish === "length" && !completion.content.trim()
-    ? skipComment(sha, "the model used its whole output budget before answering.")
-    : reviewComment(sha, completion.content)
-await github.upsertComment(number, marker, body)
-if (autoMerge && isClean(completion.content)) await github.addLabel(number, approvedLabel)
+const reason = skipReason(completion)
+await github.upsertComment(number, marker, reason ? skipComment(sha, reason) : reviewComment(sha, completion.content))
+if (autoMerge && !reason && isClean(completion.content)) await github.addLabel(number, approvedLabel)

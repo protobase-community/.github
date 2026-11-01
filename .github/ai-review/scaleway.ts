@@ -1,27 +1,11 @@
 // One chat completion on Scaleway's Generative APIs, streamed so a long reasoning phase never idles the connection.
-// The model gets no tools: its answer is text that is only ever posted as a comment.
+// The model gets no tools: its answer is text that is only ever posted as a comment. A refused or failed request is
+// not sent again: the review fails instead.
 import { settings } from "./settings"
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-async function send(key: string, body: string) {
-  for (let attempt = 1; ; attempt++) {
-    const response = await fetch(settings.endpoint, {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-      body,
-    })
-    if (response.ok) return response
-    const retryable = response.status === 429 || response.status >= 500
-    await response.body?.cancel()
-    if (!retryable || attempt === 4) throw new Error(`Scaleway answered ${response.status}`)
-    await sleep(10_000 * 2 ** (attempt - 1))
-  }
-}
 
 export type Completion = { content: string; finish: string | null; usage: unknown }
 
-export async function complete(key: string, system: string, user: string, effort: string = settings.reasoningEffort): Promise<Completion> {
+export async function complete(key: string, system: string, user: string): Promise<Completion> {
   const body = JSON.stringify({
     model: settings.model,
     messages: [
@@ -32,9 +16,17 @@ export async function complete(key: string, system: string, user: string, effort
     stream_options: { include_usage: true },
     temperature: settings.temperature,
     max_tokens: settings.maxTokens,
-    reasoning_effort: effort,
+    reasoning_effort: settings.reasoningEffort,
   })
-  const response = await send(key, body)
+  const response = await fetch(settings.endpoint, {
+    method: "POST",
+    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+    body,
+  })
+  if (!response.ok) {
+    await response.body?.cancel()
+    throw new Error(`Scaleway answered ${response.status}`)
+  }
   if (!response.body) throw new Error("Scaleway sent no response body")
 
   let content = ""
@@ -62,13 +54,3 @@ export async function complete(key: string, system: string, user: string, effort
   return { content, finish, usage }
 }
 
-// The model sometimes answers with nothing, whether it ran out of budget or stopped early, so an empty answer is asked
-// for again with each retry effort in turn, each one lower. The last empty answer is returned for the caller to skip.
-export async function completeAnswer(key: string, system: string, user: string) {
-  let completion = await complete(key, system, user)
-  for (const effort of settings.retryReasoningEfforts) {
-    if (completion.content.trim()) return completion
-    completion = await complete(key, system, user, effort)
-  }
-  return completion
-}
