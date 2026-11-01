@@ -1,6 +1,6 @@
 # Watches a promotion for the hours after it (.github/release/rollback.ts): once the stable host deployed the newest
-# release, Bugsink first seeing issues since then sends that host back to the release before, through central's
-# rollback, and files a notice for Firstmate in the backlog. Callers run it every hour.
+# release, Bugsink first seeing issues it raised on that release since then sends that host back to the release before,
+# through central's rollback, and files a notice for Firstmate in the backlog. Callers run it every hour.
 name: release-rollback
 
 on:
@@ -23,7 +23,7 @@ on:
         type: number
         default: 24
       new-issues:
-        description: How many issues first seen on the stable host since the release went live send it back.
+        description: How many issues the stable host raised on the release, first seen since it went live, send it back.
         type: number
         default: 1
       runs-on:

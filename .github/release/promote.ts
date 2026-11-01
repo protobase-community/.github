@@ -95,8 +95,8 @@ if (gates.some(([, gate]) => gate.state !== "passed")) {
   process.exit(0)
 }
 
-const head = await github.advance(base, build.sha, `Release ${short}`)
 const tag = dateTag(now)
+const head = await github.advance(base, build.sha, tag)
 await github.release(tag, head)
 await github.dispatch(required("DEPLOY_WORKFLOW"), base)
 console.log(`${base} is at ${head.slice(0, 7)}; published ${tag}; started ${required("DEPLOY_WORKFLOW")} on ${base}.`)
