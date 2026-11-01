@@ -6,8 +6,9 @@
 # and the open pull request with it. Each run rebuilds the branch from the default branch, so a fix landed there
 # after the bump opened reaches the pull request and gets a new CI run. A pull request whose CI fails, or whose review finds an issue, stays open for a person.
 #
-# Pushes made with the default GITHUB_TOKEN start no pull_request runs, so this workflow starts the template's CI
-# and its AI review (ai-pr-review.yml, with auto-merge on) with workflow_dispatch, once for each head commit. The
+# Pushes made with the default GITHUB_TOKEN start no pull_request runs, so this workflow starts the template's CI, its
+# other pull request workflows and its AI review (ai-pr-review.yml, with auto-merge on) with workflow_dispatch, once for
+# each head commit. The
 # review merges the pull request. The template needs "Allow GitHub Actions to create and approve pull requests"
 # on, so GITHUB_TOKEN may open one.
 name: protobase-bump
@@ -112,11 +113,22 @@ jobs:
             exit 0
           fi
 
-          # Only a dispatched CI run counts: the pull_request runs of a GITHUB_TOKEN push wait for an approval and never run.
-          ci_run=$(gh run list --workflow "$CI_WORKFLOW" --commit "$sha" --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-          if [ -z "$ci_run" ]; then
-            gh workflow run "$CI_WORKFLOW" --ref "$BRANCH"
-          fi
+          # Only dispatched runs count: the pull_request runs of a GITHUB_TOKEN push wait for an approval and never run.
+          # So CI, and every other workflow whose pull_request run on the head waits like that, such as call-center's
+          # phone, is dispatched on the branch once. A workflow without workflow_dispatch stays waiting and keeps the
+          # pull request open for a person.
+          waiting=$(gh api "repos/$GH_REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
+            --jq '.workflow_runs[] | select(.conclusion == "action_required") | .path | split("/") | last')
+          printf '%s\n%s\n' "$CI_WORKFLOW" "$waiting" | sort -u | while read -r workflow; do
+            [ -n "$workflow" ] || continue
+            dispatched=$(gh run list --workflow "$workflow" --commit "$sha" --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            if [ -n "$dispatched" ]; then
+              continue
+            fi
+            if ! gh workflow run "$workflow" --ref "$BRANCH"; then
+              echo "::warning::$workflow could not be dispatched; its pull_request run waits for a person."
+            fi
+          done
 
           # The review runs on the default branch, so it is found by its comment, which names the commit it reviewed.
           if ! gh api "repos/$GH_REPO/issues/$number/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]") | .body' | grep -q "<!-- reviewed $sha "; then
