@@ -1,13 +1,13 @@
 // The one advisory comment a pull request gets. It is found again by its marker and updated in place. A hidden line
 // records the commit it reviewed and its verdict, which the auto-merge reads back.
-import { limits, settings } from "./settings"
+import { limits } from "./settings"
 
 export const marker = "<!-- ai-pr-review -->"
 
 type Verdict = "clean" | "findings" | "skipped"
 
 function header(sha: string, verdict: Verdict) {
-  return `${marker}\n<!-- reviewed ${sha} ${verdict} -->\n**AI review** by \`${settings.model}\` on ${settings.provider}, of ${sha.slice(0, 7)}. An AI wrote this comment: it is advisory, can be wrong and never blocks a merge.`
+  return `${marker}\n<!-- reviewed ${sha} ${verdict} -->\n**AI review** of ${sha.slice(0, 7)}. An AI wrote this comment: it is advisory, can be wrong and never blocks a merge.`
 }
 
 export function reviewComment(sha: string, review: string) {
