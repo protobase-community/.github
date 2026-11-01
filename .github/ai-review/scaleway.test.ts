@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { complete, completeAnswer } from "./scaleway"
+import { complete, reasonedToBudget } from "./scaleway"
+import { settings } from "./settings"
 
 const realFetch = globalThis.fetch
 afterEach(() => {
@@ -35,56 +36,39 @@ describe("complete", () => {
   })
 })
 
-describe("completeAnswer", () => {
-  function answers(...contents: string[]) {
-    const bodies = contents.map(
-      (content) =>
-        `data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: content ? "stop" : "length" }] })}\n\ndata: [DONE]\n\n`,
-    )
-    let calls = 0
-    globalThis.fetch = (async () => new Response(bodies[calls++])) as unknown as typeof fetch
-    return () => calls
-  }
-
-  test("asks once when the first answer has text", async () => {
-    const calls = answers("No issues found.")
-    expect((await completeAnswer("key", "system", "user")).content).toBe("No issues found.")
-    expect(calls()).toBe(1)
-  })
-
-  test("asks again once after an empty answer", async () => {
-    const calls = answers("  ", "No issues found.")
-    expect((await completeAnswer("key", "system", "user")).content).toBe("No issues found.")
-    expect(calls()).toBe(2)
-  })
-
-  // Answers with text only at the given reasoning effort, and records every effort asked for.
-  function answersAt(effort: string) {
-    const efforts: string[] = []
+describe("one ask", () => {
+  test("sends one request with the reasoning effort and thinking budget", async () => {
+    const bodies: Record<string, unknown>[] = []
     globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      const asked = JSON.parse(String(init.body)).reasoning_effort
-      efforts.push(asked)
-      const content = asked === effort ? "No issues found." : ""
-      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content }, finish_reason: content ? "stop" : "length" }] })}\n\ndata: [DONE]\n\n`)
+      bodies.push(JSON.parse(String(init.body)))
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: "" }, finish_reason: "length" }] })}\n\ndata: [DONE]\n\n`)
     }) as unknown as typeof fetch
-    return efforts
-  }
-
-  test("asks again with medium reasoning effort", async () => {
-    const efforts = answersAt("medium")
-    expect((await completeAnswer("key", "system", "user")).content).toBe("No issues found.")
-    expect(efforts).toEqual(["high", "medium"])
+    expect((await complete("key", "system", "user")).content).toBe("")
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0].reasoning_effort).toBe(settings.reasoningEffort)
+    expect(bodies[0].thinking_token_budget).toBe(settings.thinkingTokenBudget)
   })
 
-  test("asks a third time with low reasoning effort after medium is empty too", async () => {
-    const efforts = answersAt("low")
-    expect((await completeAnswer("key", "system", "user")).content).toBe("No issues found.")
-    expect(efforts).toEqual(["high", "medium", "low"])
+  test("fails on an overloaded service without asking again", async () => {
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      return new Response("busy", { status: 503 })
+    }) as unknown as typeof fetch
+    await expect(complete("key", "system", "user")).rejects.toThrow("Scaleway answered 503")
+    expect(calls).toBe(1)
+  })
+})
+
+describe("reasonedToBudget", () => {
+  const at = (reasoning_tokens: number) => ({ content: "No issues found.", finish: "stop", usage: { completion_tokens_details: { reasoning_tokens } } })
+
+  test("is true when the reasoning stopped at its budget", () => {
+    expect(reasonedToBudget(at(settings.thinkingTokenBudget - 1))).toBe(true)
   })
 
-  test("returns the third empty answer without asking a fourth time", async () => {
-    const calls = answers("", "", "", "never sent")
-    expect((await completeAnswer("key", "system", "user")).content).toBe("")
-    expect(calls()).toBe(3)
+  test("is false when the reasoning finished under its budget", () => {
+    expect(reasonedToBudget(at(9000))).toBe(false)
+    expect(reasonedToBudget({ content: "No issues found.", finish: "stop", usage: null })).toBe(false)
   })
 })
