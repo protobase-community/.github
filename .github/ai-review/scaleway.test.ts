@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { complete, reasonedToBudget } from "./scaleway"
+import { complete } from "./scaleway"
 import { settings } from "./settings"
 
 const realFetch = globalThis.fetch
@@ -37,7 +37,7 @@ describe("complete", () => {
 })
 
 describe("one ask", () => {
-  test("sends one request with the reasoning effort and thinking budget", async () => {
+  test("sends one request with the reasoning effort", async () => {
     const bodies: Record<string, unknown>[] = []
     globalThis.fetch = (async (_url: string, init: RequestInit) => {
       bodies.push(JSON.parse(String(init.body)))
@@ -46,7 +46,6 @@ describe("one ask", () => {
     expect((await complete("key", "system", "user")).content).toBe("")
     expect(bodies).toHaveLength(1)
     expect(bodies[0].reasoning_effort).toBe(settings.reasoningEffort)
-    expect(bodies[0].thinking_token_budget).toBe(settings.thinkingTokenBudget)
   })
 
   test("fails on an overloaded service without asking again", async () => {
@@ -57,18 +56,5 @@ describe("one ask", () => {
     }) as unknown as typeof fetch
     await expect(complete("key", "system", "user")).rejects.toThrow("Scaleway answered 503")
     expect(calls).toBe(1)
-  })
-})
-
-describe("reasonedToBudget", () => {
-  const at = (reasoning_tokens: number) => ({ content: "No issues found.", finish: "stop", usage: { completion_tokens_details: { reasoning_tokens } } })
-
-  test("is true when the reasoning stopped at its budget", () => {
-    expect(reasonedToBudget(at(settings.thinkingTokenBudget - 1))).toBe(true)
-  })
-
-  test("is false when the reasoning finished under its budget", () => {
-    expect(reasonedToBudget(at(9000))).toBe(false)
-    expect(reasonedToBudget({ content: "No issues found.", finish: "stop", usage: null })).toBe(false)
   })
 })
