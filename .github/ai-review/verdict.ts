@@ -4,11 +4,18 @@ import { isClean } from "./comment"
 import type { Completion } from "./scaleway"
 
 export function skipReason(completion: Completion) {
+  if (endedWithoutAnswer(completion)) return "the model ended its turn without an answer."
   if (!completion.content.trim()) {
     return completion.finish === "length" ? "the model used its whole output budget before answering." : "the model gave no answer."
   }
   if (isClean(completion.content) && completion.finish === "length") return "the model's answer was cut off before it finished."
   return null
+}
+
+// Whether the model ended its turn on its own with no answer: finish=stop and empty content, as in run 41357095209,
+// whose answer was one token after 9389 of reasoning. A turn cut off at the output cap ends with finish=length instead.
+export function endedWithoutAnswer(completion: Completion) {
+  return completion.finish === "stop" && !completion.content.trim()
 }
 
 // How much of the reasoning the job log keeps when the answer is empty: its end shows whether the model wrote its
