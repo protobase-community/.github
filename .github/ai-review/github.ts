@@ -83,11 +83,6 @@ export function gitHub(token: string, repository: string) {
       return pulls[0]?.number ?? null
     },
 
-    async defaultBranch() {
-      const repo = (await (await request(`/repos/${repository}`)).json()) as { default_branch: string }
-      return repo.default_branch
-    },
-
     async description() {
       const repo = (await (await request(`/repos/${repository}`)).json()) as { description: string | null }
       return repo.description
