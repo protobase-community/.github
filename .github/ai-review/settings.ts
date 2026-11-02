@@ -18,7 +18,10 @@ export const settings = {
 // request whose diff alone is above it is skipped with a short note, because a review of half a change reads as a
 // review of all of it.
 export const limits = {
+  // Files with changes; a file only renamed counts toward no cap.
   maxFiles: 150,
+  // The most files GitHub lists for a pull request.
+  maxListedFiles: 3000,
   maxInputChars: 300_000,
   maxFileChars: 60_000,
   maxCommentChars: 60_000,

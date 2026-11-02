@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { buildUserMessage, contentPaths, fitUserMessage, omittedFiles, reviewedFiles } from "./pull-request"
+import { buildUserMessage, contentPaths, fitUserMessage, isPureRename, omittedFiles, reviewedFiles } from "./pull-request"
 
 const files = [
   { filename: "src/app.ts", status: "modified", patch: "@@ -1 +1 @@\n-a\n+b" },
@@ -8,23 +8,31 @@ const files = [
   { filename: "bun.lock", status: "modified", patch: "@@ -1 +1 @@\n-1\n+2" },
   { filename: "db/recordings/q.sql.json", status: "added", patch: "@@ -0,0 +1 @@\n+{}" },
   { filename: "logo.png", status: "added" },
+  { filename: "src/moved.ts", previous_filename: "lib/moved.ts", status: "renamed", changes: 0 },
+  { filename: "src/edited.ts", previous_filename: "lib/edited.ts", status: "renamed", changes: 2, patch: "@@ -1 +1 @@\n-c\n+d" },
 ]
 
 describe("reviewedFiles", () => {
   test("leaves out generated files and files without a patch", () => {
-    expect(reviewedFiles(files).map((file) => file.filename)).toEqual(["src/app.ts", "README.md", "src/old.ts"])
+    expect(reviewedFiles(files).map((file) => file.filename)).toEqual(["src/app.ts", "README.md", "src/old.ts", "src/edited.ts"])
   })
 })
 
 describe("contentPaths", () => {
   test("sends the contents of changed code, not docs or deletions", () => {
-    expect(contentPaths(files)).toEqual(["src/app.ts"])
+    expect(contentPaths(files)).toEqual(["src/app.ts", "src/edited.ts"])
   })
 })
 
 describe("omittedFiles", () => {
   test("names every changed file the diff leaves out", () => {
     expect(omittedFiles(files)).toEqual(["bun.lock", "db/recordings/q.sql.json", "logo.png"])
+  })
+})
+
+describe("isPureRename", () => {
+  test("holds a file only moved, not one moved and changed", () => {
+    expect(files.filter(isPureRename).map((file) => file.filename)).toEqual(["src/moved.ts"])
   })
 })
 
@@ -46,6 +54,12 @@ describe("buildUserMessage", () => {
     expect(message).toContain("- src/big.ts")
     expect(message).toContain("### src/app.ts\n\n```\nb\n\n```")
     expect(message).not.toContain("## Contents left out to fit")
+  })
+
+  test("names a file only moved apart from the files left out", () => {
+    expect(message).toContain("## Renamed without changes\n\n- lib/moved.ts -> src/moved.ts")
+    expect(message).not.toContain("- src/moved.ts\n")
+    expect(message).toContain("diff --git a/src/edited.ts b/src/edited.ts (renamed)")
   })
 })
 
