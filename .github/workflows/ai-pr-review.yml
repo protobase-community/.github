@@ -5,14 +5,17 @@
 # merge never waits, so it holds no runner: while checks still run, the caller's workflow_run trigger on its CI
 # workflows tries again each time one finishes, and the last one merges.
 # A merge with GITHUB_TOKEN starts no workflow on the base branch; a caller whose base branch has to run one, such as
-# a deploy on a push, passes MERGE_TOKEN, which only the merge itself uses. Any other new commit takes the label off and gets
+# a deploy on a push, names it in dispatch-after-merge, which needs no token: right after a merge this run made, it
+# starts that workflow with workflow_dispatch on the base branch, as a dispatch with GITHUB_TOKEN does start one. That
+# workflow needs a workflow_dispatch trigger, and the caller actions: write. MERGE_TOKEN, a separate token that only
+# the merge itself uses, still works instead. Any other new commit takes the label off and gets
 # a new review, but a head that only merged the base branch in, as "Update branch" does, keeps its approval and is
 # merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review. It
 # never merges a pull request whose head is in another repository or a deleted fork, from an author without write
 # access, whose head moved on while it waited, or that carries the do-not-merge label, and leaves a pull request with
 # a failed check open for a person. Taking do-not-merge off starts the merge again.
 # Auto-merge needs contents: write and pull-requests: write from the caller, and actions: read, checks: read and
-# statuses: read to wait for the other checks. This job asks for no permissions of its own, so a caller without
+# statuses: read to wait for the other checks; dispatch-after-merge needs actions: write instead of read. This job asks for no permissions of its own, so a caller without
 # auto-merge keeps working with contents: read and pull-requests: write.
 #
 # Callers run it on pull_request_target, so a pull request from a fork gets a review too, with the Scaleway key in
@@ -42,6 +45,12 @@ on:
         description: How auto-merge merges, squash or merge.
         type: string
         default: squash
+      dispatch-after-merge:
+        description: >-
+          A workflow file name, such as release.yml, that auto-merge starts with workflow_dispatch on the base branch
+          right after it merges, with GITHUB_TOKEN. It needs actions: write from the caller.
+        type: string
+        default: ''
       pr-number:
         description: The pull request to review when the caller runs on workflow_dispatch.
         type: number
@@ -121,4 +130,5 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           GITHUB_TOKEN: ${{ github.token }}
           MERGE_TOKEN: ${{ secrets.MERGE_TOKEN }}
+          DISPATCH_AFTER_MERGE: ${{ inputs.dispatch-after-merge }}
         run: bun merge.ts
