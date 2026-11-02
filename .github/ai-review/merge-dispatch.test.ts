@@ -9,6 +9,7 @@ function fakes(options: { mergeFails?: boolean; dispatchFails?: boolean } = {}) 
     async merge(number: number, sha: string, method: string) {
       if (options.mergeFails) throw new Error("GitHub answered 409")
       calls.push(`merge ${number} ${sha} ${method}`)
+      return "merged0123"
     },
   }
   const dispatcher = {
@@ -25,13 +26,13 @@ const quiet = () => {}
 describe("mergeAndDispatch", () => {
   test("starts the named workflow on the base branch after the merge", async () => {
     const { calls, merger, dispatcher } = fakes()
-    await mergeAndDispatch(merger, dispatcher, pullRequest, "squash", "release.yml", quiet)
+    expect(await mergeAndDispatch(merger, dispatcher, pullRequest, "squash", "release.yml", quiet)).toBe("merged0123")
     expect(calls).toEqual(["merge 7 abcdef0123 squash", "dispatch release.yml main"])
   })
 
   test("starts nothing without a workflow", async () => {
     const { calls, merger, dispatcher } = fakes()
-    await mergeAndDispatch(merger, dispatcher, pullRequest, "squash", "", quiet)
+    expect(await mergeAndDispatch(merger, dispatcher, pullRequest, "squash", "", quiet)).toBe("merged0123")
     expect(calls).toEqual(["merge 7 abcdef0123 squash"])
   })
 

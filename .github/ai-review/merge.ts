@@ -12,8 +12,11 @@
 // GITHUB_TOKEN does not; everything before it reads with GITHUB_TOKEN. DISPATCH_AFTER_MERGE, a workflow file name such
 // as release.yml, is the way that needs no token: right after the merge it starts that workflow with
 // workflow_dispatch on the base branch, with GITHUB_TOKEN.
+// Without MERGE_TOKEN the merge also sends the pull_request_merged repository_dispatch (announce.ts), and a refused one
+// fails the run.
 // After the merge it deletes the head branch when the repository's "Automatically delete head branches" setting is on,
 // which GitHub does not do itself for a merge made with GITHUB_TOKEN.
+import { announceMerge } from "./announce"
 import { carriesApproval } from "./approval"
 import { checksState } from "./checks"
 import { approvedSha, marker } from "./comment"
@@ -83,6 +86,8 @@ if (checks.state === "pending") stop(`these still run: ${checks.names.join(", ")
 
 // GitHub refuses the merge when the head moved on since it was read.
 const target = { number, sha, base: pullRequest.base.ref }
-await mergeAndDispatch(merger, github, target, method, process.env.DISPATCH_AFTER_MERGE)
+const mergeCommit = await mergeAndDispatch(merger, github, target, method, process.env.DISPATCH_AFTER_MERGE)
+if (await announceMerge(github, process.env.MERGE_TOKEN, { number, base: target.base, sha: mergeCommit }))
+  console.log(`Sent pull_request_merged for ${mergeCommit.slice(0, 7)} into ${target.base}.`)
 // Only a head in this repository merges, so the branch is this repository's to delete.
 await deleteMergedHead(github, pullRequest.head.ref)
