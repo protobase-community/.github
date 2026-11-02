@@ -10,7 +10,9 @@
 # workflow needs a workflow_dispatch trigger, and the caller actions: write. MERGE_TOKEN, a separate token that only
 # the merge itself uses, still works instead. Any other new commit takes the label off and gets
 # a new review, but a head that only merged the base branch in, as "Update branch" does, keeps its approval and is
-# merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review. It
+# merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review.
+# After a merge it deletes the head branch when the repository's "Automatically delete head branches" setting is on,
+# since GitHub skips that setting for a merge made with GITHUB_TOKEN; the delete needs the same contents: write. It
 # never merges a pull request whose head is in another repository or a deleted fork, from an author without write
 # access, whose head moved on while it waited, or that carries the do-not-merge label, and leaves a pull request with
 # a failed check open for a person. Taking do-not-merge off starts the merge again.
