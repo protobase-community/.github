@@ -10,7 +10,7 @@ import { carriesApproval } from "./approval"
 import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comment"
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
-import { contentPaths, fitUserMessage } from "./pull-request"
+import { contentPaths, fitUserMessage, isPureRename } from "./pull-request"
 import { complete } from "./scaleway"
 import { approvedLabel, limits } from "./settings"
 import { emptyAnswerReasoning, skipReason } from "./verdict"
@@ -49,12 +49,13 @@ if (autoMerge) {
   if (pullRequest.labels.some((label) => label.name === approvedLabel)) await github.removeLabel(number, approvedLabel)
 }
 
-if (pullRequest.changed_files > limits.maxFiles) {
-  await github.upsertComment(number, marker, skipComment(sha, `it changes ${pullRequest.changed_files} files, above the cap of ${limits.maxFiles}.`))
+const files = pullRequest.changed_files > limits.maxListedFiles ? [] : await github.changedFiles(number, limits.maxListedFiles)
+const changed = pullRequest.changed_files > limits.maxListedFiles ? pullRequest.changed_files : files.filter((file) => !isPureRename(file)).length
+if (changed > limits.maxFiles) {
+  await github.upsertComment(number, marker, skipComment(sha, `it changes ${changed} files, above the cap of ${limits.maxFiles}.`))
   process.exit(0)
 }
 
-const files = await github.changedFiles(number, limits.maxFiles)
 const contents = new Map<string, string>()
 const tooLarge: string[] = []
 for (const path of contentPaths(files)) {

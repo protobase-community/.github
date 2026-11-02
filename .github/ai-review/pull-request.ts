@@ -5,6 +5,8 @@ export type ChangedFile = {
   filename: string
   status: string
   patch?: string
+  changes?: number
+  previous_filename?: string
 }
 
 export type PullRequest = {
@@ -23,9 +25,12 @@ const generated = [
 const isGenerated = (path: string) => generated.some((pattern) => pattern.test(path))
 const isDoc = (path: string) => /\.mdx?$/.test(path)
 
+// A file moved without a change to its contents: there is nothing in it to review, so it counts toward no cap.
+export const isPureRename = (file: ChangedFile) => file.status === "renamed" && file.changes === 0
+
 // Files whose diff is sent. A file without a patch is binary or too large for the API to diff.
 export function reviewedFiles(files: ChangedFile[]) {
-  return files.filter((file) => file.patch !== undefined && !isGenerated(file.filename))
+  return files.filter((file) => file.patch !== undefined && !isGenerated(file.filename) && !isPureRename(file))
 }
 
 // Reviewed files whose full contents at the head commit are sent too: code, not docs or deletions.
@@ -37,7 +42,7 @@ export function contentPaths(files: ChangedFile[]) {
 
 export function omittedFiles(files: ChangedFile[]) {
   const reviewed = new Set(reviewedFiles(files).map((file) => file.filename))
-  return files.filter((file) => !reviewed.has(file.filename)).map((file) => file.filename)
+  return files.filter((file) => !reviewed.has(file.filename) && !isPureRename(file)).map((file) => file.filename)
 }
 
 function diffOf(file: ChangedFile) {
@@ -52,12 +57,16 @@ export function buildUserMessage(
   leftOutToFit: string[],
 ) {
   const omitted = omittedFiles(files)
+  const renamed = files.filter(isPureRename)
   const sections = [
     `Review this pull request.`,
     `## Title\n\n${pullRequest.title}`,
     `## Description\n\n${pullRequest.body?.trim() || "(none)"}`,
     `## Diff\n\n\`\`\`diff\n${reviewedFiles(files).map(diffOf).join("\n")}\n\`\`\``,
   ]
+  if (renamed.length > 0) {
+    sections.push(`## Renamed without changes\n\n${renamed.map((file) => `- ${file.previous_filename} -> ${file.filename}`).join("\n")}`)
+  }
   if (omitted.length > 0) {
     sections.push(`## Changed but left out\n\nGenerated, binary or too large to diff:\n${omitted.map((path) => `- ${path}`).join("\n")}`)
   }
