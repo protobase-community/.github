@@ -4,7 +4,8 @@
 # then merges it with GITHUB_TOKEN once every other check on the head has passed (.github/ai-review/merge.ts). The
 # merge never waits, so it holds no runner: while checks still run, the caller's workflow_run trigger on its CI
 # workflows tries again each time one finishes, and the last one merges.
-# A merge with GITHUB_TOKEN starts no workflow on the base branch. Any other new commit takes the label off and gets
+# A merge with GITHUB_TOKEN starts no workflow on the base branch; a caller whose base branch has to run one, such as
+# a deploy on a push, passes MERGE_TOKEN, which only the merge itself uses. Any other new commit takes the label off and gets
 # a new review, but a head that only merged the base branch in, as "Update branch" does, keeps its approval and is
 # merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review. It
 # never merges a pull request whose head is in another repository or a deleted fork, from an author without write
@@ -56,6 +57,11 @@ on:
       SCW_PR_REVIEW_SECRET_KEY:
         description: The restricted Scaleway key of the github-pr-review application.
         required: true
+      MERGE_TOKEN:
+        description: >-
+          A token auto-merge merges with instead of GITHUB_TOKEN, so the merge's push starts the base branch's
+          workflows, such as a deploy that runs on a push to it. It needs Contents and Pull requests write.
+        required: false
 
 jobs:
   review:
@@ -115,4 +121,5 @@ jobs:
           MERGE_METHOD: ${{ inputs.merge-method }}
           RUN_ID: ${{ github.run_id }}
           GITHUB_TOKEN: ${{ github.token }}
+          MERGE_TOKEN: ${{ secrets.MERGE_TOKEN }}
         run: bun merge.ts
