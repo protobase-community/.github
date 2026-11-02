@@ -1,5 +1,5 @@
 // The GitHub REST calls a review and its auto-merge make. They read the pull request as data; the review writes only
-// its one comment and the approval label, and the auto-merge only merges, and starts a workflow after the merge when the caller names one.
+// its one comment and the approval label, and the auto-merge only merges, starts a workflow after the merge when the caller names one, and deletes the merged head branch when the repository's setting asks for it.
 import type { ComparedFile } from "./approval"
 import type { CheckRun, CommitStatus, WorkflowRun } from "./checks"
 import type { ChangedFile } from "./pull-request"
@@ -86,6 +86,33 @@ export function gitHub(token: string, repository: string) {
     async description() {
       const repo = (await (await request(`/repos/${repository}`)).json()) as { description: string | null }
       return repo.description
+    },
+
+    // The repository's "Automatically delete head branches" setting.
+    async deletesHeadOnMerge() {
+      const repo = (await (await request(`/repos/${repository}`)).json()) as { delete_branch_on_merge: boolean }
+      return repo.delete_branch_on_merge
+    },
+
+    // How many open pull requests merge into `base`, up to one page.
+    async openPullRequestsOnto(base: string) {
+      const path = `/repos/${repository}/pulls?state=open&base=${encodeURIComponent(base)}&per_page=100`
+      return ((await (await request(path)).json()) as unknown[]).length
+    },
+
+    // False when the branch is gone already, as after a merge with MERGE_TOKEN, which GitHub's own setting deletes.
+    // GitHub answers 422 both for a branch that does not exist and for one it refuses to delete, such as a protected
+    // one, so a 422 counts as gone only when reading the branch then answers 404.
+    async deleteBranch(branch: string) {
+      const ref = `heads/${branch.split("/").map(encodeURIComponent).join("/")}`
+      const path = `/repos/${repository}/git/refs/${ref}`
+      const response = await fetch(`${api}${path}`, { method: "DELETE", headers: { ...headers, accept: "application/vnd.github+json" } })
+      if (response.ok) return true
+      if (response.status === 422) {
+        const lookup = await fetch(`${api}/repos/${repository}/git/ref/${ref}`, { headers: { ...headers, accept: "application/vnd.github+json" } })
+        if (lookup.status === 404) return false
+      }
+      throw new Error(`GitHub answered ${response.status} for DELETE ${path}`)
     },
 
     changedFiles(number: number, maxItems: number) {
