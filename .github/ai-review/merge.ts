@@ -8,6 +8,9 @@
 //
 //   REPOSITORY=owner/name PR_NUMBER=1 MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
 //   REPOSITORY=owner/name HEAD_BRANCH=topic MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
+//
+// MERGE_TOKEN, when set, makes the merge itself, so its push starts the base branch's workflows, as one with
+// GITHUB_TOKEN does not; everything before it reads with GITHUB_TOKEN.
 import { carriesApproval } from "./approval"
 import { checksState } from "./checks"
 import { approvedSha, marker } from "./comment"
@@ -23,6 +26,7 @@ function required(name: string) {
 const repository = required("REPOSITORY")
 const method = required("MERGE_METHOD")
 const github = gitHub(required("GITHUB_TOKEN"), repository)
+const merger = process.env.MERGE_TOKEN ? gitHub(process.env.MERGE_TOKEN, repository) : github
 
 function stop(reason: string): never {
   console.log(`Not merging: ${reason}.`)
@@ -76,5 +80,5 @@ if (checks.state === "red") stop(`these did not pass: ${checks.names.join(", ")}
 if (checks.state === "pending") stop(`these still run: ${checks.names.join(", ")}; the CI run that finishes last merges it`)
 
 // GitHub refuses the merge when the head moved on since it was read.
-await github.merge(number, sha, method)
+await merger.merge(number, sha, method)
 console.log(`Merged ${sha.slice(0, 7)} with ${method}.`)
