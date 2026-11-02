@@ -3,8 +3,7 @@
 // merged its base in, and when a CI run on the pull request's branch finishes. It tries once and never waits, so it
 // holds no runner while checks run: a check still running leaves the merge to the run that finishes last. It never
 // merges a pull request whose head is in another repository, from an author who cannot write to the repository, or
-// that carries the do-not-merge label, nor with a failed check. A release, from development into the default branch,
-// never merges here.
+// that carries the do-not-merge label, nor with a failed check.
 //
 //   REPOSITORY=owner/name PR_NUMBER=1 MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
 //   REPOSITORY=owner/name HEAD_BRANCH=topic MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
@@ -15,7 +14,7 @@ import { carriesApproval } from "./approval"
 import { checksState } from "./checks"
 import { approvedSha, marker } from "./comment"
 import { gitHub } from "./github"
-import { approvedLabel, holdLabel, releaseBranch } from "./settings"
+import { approvedLabel, holdLabel } from "./settings"
 
 function required(name: string) {
   const value = process.env[name]
@@ -53,9 +52,6 @@ async function refusal(pullRequest: Awaited<ReturnType<typeof github.pullRequest
   // A null head repository is a fork that was deleted. Only a head in this very repository ever merges.
   const headRepository = pullRequest.head.repo === null ? null : pullRequest.head.repo.full_name
   if (headRepository !== repository) return `its head is in ${headRepository ?? "a deleted fork"}, not in ${repository}`
-
-  if (pullRequest.head.ref === releaseBranch && pullRequest.base.ref === (await github.defaultBranch()))
-    return `it is a release from ${releaseBranch} into ${pullRequest.base.ref}, which needs a person's approval`
 
   if (pullRequest.labels.some((label) => label.name === holdLabel)) return `it has the ${holdLabel} label`
   if (!pullRequest.labels.some((label) => label.name === approvedLabel)) return `it has no ${approvedLabel} label`
