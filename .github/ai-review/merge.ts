@@ -9,11 +9,14 @@
 //   REPOSITORY=owner/name HEAD_BRANCH=topic MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
 //
 // MERGE_TOKEN, when set, makes the merge itself, so its push starts the base branch's workflows, as one with
-// GITHUB_TOKEN does not; everything before it reads with GITHUB_TOKEN.
+// GITHUB_TOKEN does not; everything before it reads with GITHUB_TOKEN. DISPATCH_AFTER_MERGE, a workflow file name such
+// as release.yml, is the way that needs no token: right after the merge it starts that workflow with
+// workflow_dispatch on the base branch, with GITHUB_TOKEN.
 import { carriesApproval } from "./approval"
 import { checksState } from "./checks"
 import { approvedSha, marker } from "./comment"
 import { gitHub } from "./github"
+import { mergeAndDispatch } from "./merge-dispatch"
 import { approvedLabel, holdLabel } from "./settings"
 
 function required(name: string) {
@@ -76,5 +79,5 @@ if (checks.state === "red") stop(`these did not pass: ${checks.names.join(", ")}
 if (checks.state === "pending") stop(`these still run: ${checks.names.join(", ")}; the CI run that finishes last merges it`)
 
 // GitHub refuses the merge when the head moved on since it was read.
-await merger.merge(number, sha, method)
-console.log(`Merged ${sha.slice(0, 7)} with ${method}.`)
+const target = { number, sha, base: pullRequest.base.ref }
+await mergeAndDispatch(merger, github, target, method, process.env.DISPATCH_AFTER_MERGE)

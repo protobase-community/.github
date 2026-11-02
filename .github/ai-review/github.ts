@@ -1,5 +1,5 @@
 // The GitHub REST calls a review and its auto-merge make. They read the pull request as data; the review writes only
-// its one comment and the approval label, and the auto-merge only merges.
+// its one comment and the approval label, and the auto-merge only merges, and starts a workflow after the merge when the caller names one.
 import type { ComparedFile } from "./approval"
 import type { CheckRun, CommitStatus, WorkflowRun } from "./checks"
 import type { ChangedFile } from "./pull-request"
@@ -136,6 +136,12 @@ export function gitHub(token: string, repository: string) {
     // Merges only while the head is still the given commit; GitHub refuses the merge once it moved on.
     async merge(number: number, sha: string, method: string) {
       await request(`/repos/${repository}/pulls/${number}/merge`, { method: "PUT", body: JSON.stringify({ sha, merge_method: method }) })
+    },
+
+    // Starts a workflow that has a workflow_dispatch trigger, by its file name, on a branch.
+    async dispatchWorkflow(workflow: string, ref: string) {
+      const path = `/repos/${repository}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`
+      await request(path, { method: "POST", body: JSON.stringify({ ref }) })
     },
 
     reviewComment,
