@@ -11,7 +11,7 @@ function fakes(options: { setting?: boolean; dependents?: number; deleteFails?: 
       return options.dependents ?? 0
     },
     async deleteBranch(branch: string) {
-      if (options.deleteFails) throw new Error("GitHub answered 422")
+      if (options.deleteFails) throw new Error("GitHub answered 422 for DELETE /repos/o/r/git/refs/heads/topic")
       if (options.gone) return false
       deleted.push(branch)
       return true
@@ -53,6 +53,6 @@ describe("deleteMergedHead", () => {
 
   test("fails when the delete fails", async () => {
     const { branches } = fakes({ deleteFails: true })
-    await expect(deleteMergedHead(branches, "topic", quiet)).rejects.toThrow("422")
+    await expect(deleteMergedHead(branches, "topic", quiet)).rejects.toThrow("GitHub answered 422")
   })
 })

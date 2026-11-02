@@ -101,12 +101,18 @@ export function gitHub(token: string, repository: string) {
     },
 
     // False when the branch is gone already, as after a merge with MERGE_TOKEN, which GitHub's own setting deletes.
+    // GitHub answers 422 both for a branch that does not exist and for one it refuses to delete, such as a protected
+    // one, so a 422 counts as gone only when reading the branch then answers 404.
     async deleteBranch(branch: string) {
-      const path = `/repos/${repository}/git/refs/heads/${branch.split("/").map(encodeURIComponent).join("/")}`
+      const ref = `heads/${branch.split("/").map(encodeURIComponent).join("/")}`
+      const path = `/repos/${repository}/git/refs/${ref}`
       const response = await fetch(`${api}${path}`, { method: "DELETE", headers: { ...headers, accept: "application/vnd.github+json" } })
-      if (response.status === 422 || response.status === 404) return false
-      if (!response.ok) throw new Error(`GitHub answered ${response.status} for DELETE ${path}`)
-      return true
+      if (response.ok) return true
+      if (response.status === 422) {
+        const lookup = await fetch(`${api}/repos/${repository}/git/ref/${ref}`, { headers: { ...headers, accept: "application/vnd.github+json" } })
+        if (lookup.status === 404) return false
+      }
+      throw new Error(`GitHub answered ${response.status} for DELETE ${path}`)
     },
 
     changedFiles(number: number, maxItems: number) {
