@@ -7,11 +7,21 @@ import type { CommitPullRequest } from "./trigger"
 
 const api = "https://api.github.com"
 
-export function gitHub(token: string, repository: string) {
+// The answers of a short GitHub outage, which a GET tries once more after a fixed pause instead of failing the run.
+const transient = new Set([502, 503, 504])
+
+export function gitHub(token: string, repository: string, retryPauseMs = 5000) {
   const headers = { authorization: `Bearer ${token}`, "x-github-api-version": "2022-11-28" }
 
+  async function send(url: string, init: RequestInit) {
+    const response = await fetch(url, init)
+    if ((init.method ?? "GET") !== "GET" || !transient.has(response.status)) return response
+    await Bun.sleep(retryPauseMs)
+    return fetch(url, init)
+  }
+
   async function request(path: string, init: RequestInit = {}, accept = "application/vnd.github+json") {
-    const response = await fetch(`${api}${path}`, { ...init, headers: { ...headers, accept, ...init.headers } })
+    const response = await send(`${api}${path}`, { ...init, headers: { ...headers, accept, ...init.headers } })
     if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${init.method ?? "GET"} ${path}`)
     return response
   }
@@ -39,7 +49,7 @@ export function gitHub(token: string, repository: string) {
   async function fileAt(path: string, ref: string | null, repo = repository) {
     const encoded = path.split("/").map(encodeURIComponent).join("/")
     const query = ref ? `?ref=${ref}` : ""
-    const response = await fetch(`${api}/repos/${repo}/contents/${encoded}${query}`, {
+    const response = await send(`${api}/repos/${repo}/contents/${encoded}${query}`, {
       headers: { ...headers, accept: "application/vnd.github.raw+json" },
     })
     if (response.status === 404) return null
