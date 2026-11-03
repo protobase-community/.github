@@ -20,9 +20,12 @@ export function skipComment(sha: string, reason: string) {
   return `${header(sha, "skipped")}\n\nNot reviewed: ${reason}`
 }
 
-// Whether a review found nothing, which the model says with exactly this answer (prompts/answer.md).
+// Whether a review found nothing. The model says so with the line "No issues found." (prompts/answer.md), and may
+// write the checks it ran around it; it tags each finding with a severity, so an answer naming one is never clean,
+// even as a word in prose: this verdict lets the review merge, so in doubt it reads findings.
 export function isClean(review: string) {
-  return /^no issues found\.?$/i.test(review.trim())
+  const verdict = review.split("\n").some((line) => /^no issues found\.?$/i.test(line.trim()))
+  return verdict && !/\b(high|medium|low)\b/i.test(review)
 }
 
 // The commit a review comment approved, or null when its review found issues, was skipped or is not one.
