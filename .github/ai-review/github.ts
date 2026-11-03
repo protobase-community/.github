@@ -7,11 +7,24 @@ import type { CommitPullRequest } from "./trigger"
 
 const api = "https://api.github.com"
 
-export function gitHub(token: string, repository: string) {
+// The server errors GitHub answers now and then and not again a moment later.
+const transient = new Set([500, 502, 503, 504])
+
+// `retryPause` is the fixed wait in milliseconds before a GET that met a transient server error is sent once more.
+export function gitHub(token: string, repository: string, retryPause = 2000) {
   const headers = { authorization: `Bearer ${token}`, "x-github-api-version": "2022-11-28" }
 
+  // Every call goes through here. Only a GET is sent again, since it changes nothing; a second answer that is not OK
+  // is the caller's to handle, as the first would have been.
+  async function send(path: string, init: RequestInit) {
+    const response = await fetch(`${api}${path}`, init)
+    if ((init.method ?? "GET") !== "GET" || !transient.has(response.status)) return response
+    await new Promise((resolve) => setTimeout(resolve, retryPause))
+    return fetch(`${api}${path}`, init)
+  }
+
   async function request(path: string, init: RequestInit = {}, accept = "application/vnd.github+json") {
-    const response = await fetch(`${api}${path}`, { ...init, headers: { ...headers, accept, ...init.headers } })
+    const response = await send(path, { ...init, headers: { ...headers, accept, ...init.headers } })
     if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${init.method ?? "GET"} ${path}`)
     return response
   }
@@ -39,7 +52,7 @@ export function gitHub(token: string, repository: string) {
   async function fileAt(path: string, ref: string | null, repo = repository) {
     const encoded = path.split("/").map(encodeURIComponent).join("/")
     const query = ref ? `?ref=${ref}` : ""
-    const response = await fetch(`${api}/repos/${repo}/contents/${encoded}${query}`, {
+    const response = await send(`/repos/${repo}/contents/${encoded}${query}`, {
       headers: { ...headers, accept: "application/vnd.github.raw+json" },
     })
     if (response.status === 404) return null
@@ -112,10 +125,10 @@ export function gitHub(token: string, repository: string) {
     async deleteBranch(branch: string) {
       const ref = `heads/${branch.split("/").map(encodeURIComponent).join("/")}`
       const path = `/repos/${repository}/git/refs/${ref}`
-      const response = await fetch(`${api}${path}`, { method: "DELETE", headers: { ...headers, accept: "application/vnd.github+json" } })
+      const response = await send(path, { method: "DELETE", headers: { ...headers, accept: "application/vnd.github+json" } })
       if (response.ok) return true
       if (response.status === 422) {
-        const lookup = await fetch(`${api}/repos/${repository}/git/ref/${ref}`, { headers: { ...headers, accept: "application/vnd.github+json" } })
+        const lookup = await send(`/repos/${repository}/git/ref/${ref}`, { headers: { ...headers, accept: "application/vnd.github+json" } })
         if (lookup.status === 404) return false
       }
       throw new Error(`GitHub answered ${response.status} for DELETE ${path}`)
@@ -177,7 +190,7 @@ export function gitHub(token: string, repository: string) {
     // Sends a repository_dispatch event. A refusal throws with GitHub's answer, which says why.
     async dispatch(eventType: string, payload: Record<string, unknown>) {
       const path = `/repos/${repository}/dispatches`
-      const response = await fetch(`${api}${path}`, {
+      const response = await send(path, {
         method: "POST",
         headers: { ...headers, accept: "application/vnd.github+json" },
         body: JSON.stringify({ event_type: eventType, client_payload: payload }),
