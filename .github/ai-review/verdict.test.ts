@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { emptyAnswerReasoning, reasoningTailChars, skipReason } from "./verdict"
+import { emptyAnswerReasoning, endedWithoutAnswer, reasoningTailChars, skipReason } from "./verdict"
 
 const answer = (content: string, finish: string, reasoning = "") => ({ content, reasoning, finish, usage: null })
 
@@ -18,7 +18,19 @@ describe("skipReason", () => {
 
   test("does not pass an empty answer", () => {
     expect(skipReason(answer("", "length"))).toBe("the model used its whole output budget before answering.")
-    expect(skipReason(answer(" ", "stop"))).toBe("the model gave no answer.")
+    expect(skipReason(answer(" ", "stop"))).toBe("the model ended its turn without an answer.")
+  })
+})
+
+describe("endedWithoutAnswer", () => {
+  test("is an empty answer the model stopped on", () => {
+    expect(endedWithoutAnswer(answer("", "stop"))).toBe(true)
+    expect(endedWithoutAnswer(answer("\n\n", "stop"))).toBe(true)
+  })
+
+  test("is not an answer, nor an empty one cut off at the output cap", () => {
+    expect(endedWithoutAnswer(answer("No issues found.", "stop"))).toBe(false)
+    expect(endedWithoutAnswer(answer("", "length"))).toBe(false)
   })
 })
 
@@ -30,7 +42,7 @@ describe("emptyAnswerReasoning", () => {
   test("gives the reasoning of an empty answer that ended below the cap, which stays not passed", () => {
     const completion = answer("\n\n", "stop", "So the verdict: No issues found.")
     expect(emptyAnswerReasoning(completion)).toBe("So the verdict: No issues found.")
-    expect(skipReason(completion)).toBe("the model gave no answer.")
+    expect(skipReason(completion)).toBe("the model ended its turn without an answer.")
   })
 
   test("keeps only the end of a long reasoning", () => {
