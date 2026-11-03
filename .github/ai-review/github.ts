@@ -3,15 +3,19 @@
 import type { ComparedFile } from "./approval"
 import type { CheckRun, CommitStatus, WorkflowRun } from "./checks"
 import type { ChangedFile } from "./pull-request"
+import { pause, readRetryingOnce } from "./retry"
 import type { CommitPullRequest } from "./trigger"
 
 const api = "https://api.github.com"
 
-export function gitHub(token: string, repository: string) {
+// `wait` is the pause before a read that got a transient 5xx is sent again; tests pass one that does not wait.
+export function gitHub(token: string, repository: string, wait = pause) {
   const headers = { authorization: `Bearer ${token}`, "x-github-api-version": "2022-11-28" }
 
   async function request(path: string, init: RequestInit = {}, accept = "application/vnd.github+json") {
-    const response = await fetch(`${api}${path}`, { ...init, headers: { ...headers, accept, ...init.headers } })
+    const send = () => fetch(`${api}${path}`, { ...init, headers: { ...headers, accept, ...init.headers } })
+    // Only a read is sent again: a write GitHub answered 5xx to may have happened, such as a comment posted.
+    const response = init.method ? await send() : await readRetryingOnce(send, wait)
     if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${init.method ?? "GET"} ${path}`)
     return response
   }
@@ -39,9 +43,10 @@ export function gitHub(token: string, repository: string) {
   async function fileAt(path: string, ref: string | null, repo = repository) {
     const encoded = path.split("/").map(encodeURIComponent).join("/")
     const query = ref ? `?ref=${ref}` : ""
-    const response = await fetch(`${api}/repos/${repo}/contents/${encoded}${query}`, {
+    const send = () => fetch(`${api}/repos/${repo}/contents/${encoded}${query}`, {
       headers: { ...headers, accept: "application/vnd.github.raw+json" },
     })
+    const response = await readRetryingOnce(send, wait)
     if (response.status === 404) return null
     if (!response.ok) throw new Error(`GitHub answered ${response.status} for ${path} at ${ref ?? "the default branch"} in ${repo}`)
     return response.text()
