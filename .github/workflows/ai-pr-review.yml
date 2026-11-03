@@ -3,7 +3,8 @@
 # With auto-merge on, a review that finds no issues puts the ai-approved label on the pull request, and the same job
 # then merges it with GITHUB_TOKEN once every other check on the head has passed (.github/ai-review/merge.ts). The
 # merge never waits, so it holds no runner: while checks still run, the caller's workflow_run trigger on its CI
-# workflows tries again each time one finishes, and the last one merges.
+# workflows tries again each time one finishes, and its check_suite and status triggers each time another app's check
+# suite or commit status finishes, so the last one merges.
 # A merge with GITHUB_TOKEN starts no workflow on the base branch; a caller whose base branch has to run one, such as
 # a deploy on a push, names it in dispatch-after-merge, which needs no token: right after a merge this run made, it
 # starts that workflow with workflow_dispatch on the base branch, as a dispatch with GITHUB_TOKEN does start one. That
@@ -77,11 +78,15 @@ jobs:
   review:
     # Bots are skipped, except github-actions (user id 41898282, login github-actions[bot]), which opens the pull
     # requests of a repository's own workflows. Of label events only adding the approval label and taking the hold label off count. Every
-    # pull_request_target event, labeled too, carries github.event.pull_request; workflow_dispatch and workflow_run
-    # have none, so they are checked first. A CI run counts only on a branch of this repository, never a fork's.
+    # pull_request_target event, labeled too, carries github.event.pull_request; workflow_dispatch, workflow_run,
+    # check_suite and status have none, so they are checked first. A CI run counts only on a branch of this repository,
+    # never a fork's; another app's check suite only with a pull request, which a fork's branch never lists; and
+    # another app's status only once it is final, as merge.ts finds its pull request from the commit.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository) || (
+      (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'check_suite' && github.event.check_suite.pull_requests[0] != null) ||
+      (github.event_name == 'status' && github.event.state != 'pending') || (
         !github.event.pull_request.draft &&
         github.event.pull_request.state == 'open' &&
         (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282) &&
@@ -93,14 +98,16 @@ jobs:
     # read. A permissions block here would either break the callers that grant contents: read or take write away from
     # the ones that grant it.
     timeout-minutes: 15
-    # Label events and CI runs get groups of their own, so neither cancels a review that is still running. A
+    # Label events and finished checks get groups of their own, so neither cancels a review that is still running. A
     # dispatched review shares the group of push events on purpose: both review the pull request's current head, so
     # the newer one replaces the older. pr-number defaults to 0, which is falsy in an expression, so || falls through.
+    # A status names no branch of its own, so its commit stands in.
     concurrency:
-      group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number || github.event.workflow_run.head_branch }}-${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && 'label' || github.event_name == 'workflow_run' && 'checks' || 'push' }}
+      group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number || github.event.workflow_run.head_branch || github.event.check_suite.head_branch || github.event.sha }}-${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && 'label' || (github.event_name == 'workflow_run' || github.event_name == 'check_suite' || github.event_name == 'status') && 'checks' || 'push' }}
       cancel-in-progress: true
     env:
-      # A CI run started with workflow_dispatch names no pull request; merge.ts then finds it by HEAD_BRANCH.
+      # A CI run started with workflow_dispatch names no pull request; merge.ts then finds it by HEAD_BRANCH. For another
+      # app's check suite or status, merge.ts finds it from the event itself.
       PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || '' }}
       HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
     steps:
@@ -114,7 +121,9 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      - if: github.event_name != 'workflow_run' && github.event.action != 'labeled' && github.event.action != 'unlabeled'
+      - if: >-
+          (github.event_name == 'pull_request_target' || github.event_name == 'workflow_dispatch') &&
+          github.event.action != 'labeled' && github.event.action != 'unlabeled'
         working-directory: .github/ai-review
         env:
           REPOSITORY: ${{ github.repository }}
