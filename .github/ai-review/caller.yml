@@ -1,6 +1,10 @@
 # AI review of every pull request; see protobase-community/.github's ai-pr-review workflow. A review that finds no
 # issues also merges the pull request, once every other check passed, unless it carries the do-not-merge label.
 # pull_request_target runs this file from the base branch and never checks out the pull request.
+# Each merge sends the pull_request_merged repository_dispatch, since a push made with GITHUB_TOKEN starts no workflow:
+# a workflow that runs on merges, such as a release, lists `repository_dispatch: types: [pull_request_merged]` under
+# `on:` and reads github.event.client_payload.number (the pull request), .base (the branch it merged into) and .sha
+# (the merge commit). It runs from the default branch, so one that releases only one branch checks base.
 name: ai-review
 
 on:

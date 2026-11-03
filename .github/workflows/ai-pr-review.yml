@@ -9,7 +9,10 @@
 # a deploy on a push, names it in dispatch-after-merge, which needs no token: right after a merge this run made, it
 # starts that workflow with workflow_dispatch on the base branch, as a dispatch with GITHUB_TOKEN does start one. That
 # workflow needs a workflow_dispatch trigger, and the caller actions: write. MERGE_TOKEN, a separate token that only
-# the merge itself uses, still works instead. Any other new commit takes the label off and gets
+# the merge itself uses, still works instead. Without MERGE_TOKEN the merge also sends the pull_request_merged
+# repository_dispatch, which a caller's workflow on the default branch listens for with
+# `on: repository_dispatch: types: [pull_request_merged]`; its client_payload holds number (the pull request), base
+# (the branch it merged into) and sha (the merge commit). A refused dispatch fails the run. Any other new commit takes the label off and gets
 # a new review, but a head that only merged the base branch in, as "Update branch" does, keeps its approval and is
 # merged without one. Adding the label by hand starts the merge too, still only for a head with a clean review.
 # After a merge it deletes the head branch when the repository's "Automatically delete head branches" setting is on,

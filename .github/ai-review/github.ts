@@ -166,9 +166,23 @@ export function gitHub(token: string, repository: string) {
       return answer.role_name
     },
 
-    // Merges only while the head is still the given commit; GitHub refuses the merge once it moved on.
+    // Merges only while the head is still the given commit; GitHub refuses the merge once it moved on. Answers the
+    // merge commit.
     async merge(number: number, sha: string, method: string) {
-      await request(`/repos/${repository}/pulls/${number}/merge`, { method: "PUT", body: JSON.stringify({ sha, merge_method: method }) })
+      const path = `/repos/${repository}/pulls/${number}/merge`
+      const answer = (await (await request(path, { method: "PUT", body: JSON.stringify({ sha, merge_method: method }) })).json()) as { sha: string }
+      return answer.sha
+    },
+
+    // Sends a repository_dispatch event. A refusal throws with GitHub's answer, which says why.
+    async dispatch(eventType: string, payload: Record<string, unknown>) {
+      const path = `/repos/${repository}/dispatches`
+      const response = await fetch(`${api}${path}`, {
+        method: "POST",
+        headers: { ...headers, accept: "application/vnd.github+json" },
+        body: JSON.stringify({ event_type: eventType, client_payload: payload }),
+      })
+      if (!response.ok) throw new Error(`GitHub answered ${response.status} for POST ${path}: ${await response.text()}`)
     },
 
     // Starts a workflow that has a workflow_dispatch trigger, by its file name, on a branch.
