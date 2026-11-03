@@ -3,6 +3,7 @@
 import type { ComparedFile } from "./approval"
 import type { CheckRun, CommitStatus, WorkflowRun } from "./checks"
 import type { ChangedFile } from "./pull-request"
+import type { CommitPullRequest } from "./trigger"
 
 const api = "https://api.github.com"
 
@@ -81,6 +82,11 @@ export function gitHub(token: string, repository: string) {
       const path = `/repos/${repository}/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}`
       const pulls = (await (await request(path)).json()) as { number: number }[]
       return pulls[0]?.number ?? null
+    },
+
+    // The pull requests a commit belongs to, up to one page: those whose head it is and those it is merged into.
+    async commitPullRequests(sha: string) {
+      return (await (await request(`/repos/${repository}/commits/${sha}/pulls?per_page=100`)).json()) as CommitPullRequest[]
     },
 
     async description() {

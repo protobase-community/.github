@@ -11,6 +11,11 @@ on:
   workflow_run:
     workflows: [ci]
     types: [completed]
+  # Another app's check suite or commit status that finishes tries the merge again too, as its completion starts no
+  # workflow_run. A pending status runs no job.
+  check_suite:
+    types: [completed]
+  status:
   workflow_dispatch:
     inputs:
       pr-number:

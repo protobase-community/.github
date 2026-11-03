@@ -1,7 +1,8 @@
 // Merges a pull request that carries the ai-approved label and a clean AI review of its head, once everything else on
 // the head has passed. It runs in the review's job after the review, alone when the label is added or the branch only
-// merged its base in, and when a CI run on the pull request's branch finishes. It tries once and never waits, so it
-// holds no runner while checks run: a check still running leaves the merge to the run that finishes last. It never
+// merged its base in, when a CI run on the pull request's branch finishes, and when another app's check suite or
+// commit status on its head finishes. It tries once and never waits, so it holds no runner while checks run: a check
+// still running leaves the merge to the one that finishes last. It never
 // merges a pull request whose head is in another repository, from an author who cannot write to the repository, or
 // that carries the do-not-merge label, nor with a failed check.
 //
@@ -21,6 +22,7 @@ import { deleteMergedHead } from "./delete-head"
 import { gitHub } from "./github"
 import { mergeAndDispatch } from "./merge-dispatch"
 import { approvedLabel, holdLabel } from "./settings"
+import { type CheckSuiteEvent, checkSuitePullRequest, type StatusEvent, statusPullRequest } from "./trigger"
 
 function required(name: string) {
   const value = process.env[name]
@@ -38,12 +40,26 @@ function stop(reason: string): never {
   process.exit(0)
 }
 
+// Another app's check suite or commit status that finished names its pull request only in the event, if at all.
+async function eventPullRequest(name: string) {
+  const event = await Bun.file(required("GITHUB_EVENT_PATH")).json()
+  const found =
+    name === "check_suite"
+      ? checkSuitePullRequest(event as CheckSuiteEvent)
+      : statusPullRequest(event as StatusEvent, await github.commitPullRequests((event as StatusEvent).sha), repository)
+  return found ?? stop(`the ${name} event is for no open pull request whose head is in ${repository}`)
+}
+
 // A CI run started with workflow_dispatch names no pull request, so its branch finds the open one. 0 names none either.
-const given = Number(process.env.PR_NUMBER || 0)
-const number =
-  given > 0
-    ? given
-    : ((await github.openPullRequest(required("HEAD_BRANCH"))) ?? stop(`no open pull request has the head ${process.env.HEAD_BRANCH}`))
+async function pullRequestNumber() {
+  const event = process.env.GITHUB_EVENT_NAME
+  if (event === "check_suite" || event === "status") return eventPullRequest(event)
+  const given = Number(process.env.PR_NUMBER || 0)
+  if (given > 0) return given
+  return (await github.openPullRequest(required("HEAD_BRANCH"))) ?? stop(`no open pull request has the head ${process.env.HEAD_BRANCH}`)
+}
+
+const number = await pullRequestNumber()
 
 const writers = new Set(["admin", "maintain", "write"])
 // github-actions opens the pull requests of this repository's own workflows. It is no collaborator, and only those
@@ -79,7 +95,7 @@ if (reason) stop(reason)
 const ownWorkflowId = (await github.workflowRun(Number(required("RUN_ID")))).workflow_id
 const checks = checksState(await github.workflowRuns(sha), await github.checkRuns(sha), await github.statuses(sha), ownWorkflowId)
 if (checks.state === "red") stop(`these did not pass: ${checks.names.join(", ")}`)
-if (checks.state === "pending") stop(`these still run: ${checks.names.join(", ")}; the CI run that finishes last merges it`)
+if (checks.state === "pending") stop(`these still run: ${checks.names.join(", ")}; the check that finishes last merges it`)
 
 // GitHub refuses the merge when the head moved on since it was read.
 const target = { number, sha, base: pullRequest.base.ref }
