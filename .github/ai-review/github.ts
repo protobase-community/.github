@@ -1,11 +1,24 @@
 // The GitHub REST calls a review and its auto-merge make. They read the pull request as data; the review writes only
 // its one comment and the approval label, and the auto-merge only merges, starts a workflow after the merge when the caller names one, and deletes the merged head branch when the repository's setting asks for it.
 import type { ComparedFile } from "./approval"
-import type { CheckRun, CommitStatus, WorkflowRun } from "./checks"
+import type { CheckRun, WorkflowRun } from "./checks"
+import type { ReviewerCheck, ReviewerStatus, ReviewThread } from "./fallback-review"
 import type { ChangedFile } from "./pull-request"
 import type { CommitPullRequest } from "./trigger"
 
 const api = "https://api.github.com"
+
+// A pull request's review threads, a page at a time, with each one's first comment.
+const reviewThreadsQuery = `query($owner: String!, $name: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes { isResolved isOutdated path line comments(first: 1) { nodes { author { __typename login } body url } } }
+      }
+    }
+  }
+}`
 
 // The server errors GitHub answers now and then and not again a moment later.
 const transient = new Set([500, 502, 503, 504])
@@ -14,11 +27,12 @@ const transient = new Set([500, 502, 503, 504])
 export function gitHub(token: string, repository: string, retryPause = 2000) {
   const headers = { authorization: `Bearer ${token}`, "x-github-api-version": "2022-11-28" }
 
-  // Every call goes through here. Only a GET is sent again, since it changes nothing; a second answer that is not OK
-  // is the caller's to handle, as the first would have been.
+  // Every call goes through here. Only a GET, or a POST of a GraphQL query, which this module only ever sends, is sent
+  // again, since it changes nothing; a second answer that is not OK is the caller's to handle, as the first would have been.
   async function send(path: string, init: RequestInit) {
     const response = await fetch(`${api}${path}`, init)
-    if ((init.method ?? "GET") !== "GET" || !transient.has(response.status)) return response
+    const reads = (init.method ?? "GET") === "GET" || path === "/graphql"
+    if (!reads || !transient.has(response.status)) return response
     await new Promise((resolve) => setTimeout(resolve, retryPause))
     return fetch(`${api}${path}`, init)
   }
@@ -168,8 +182,13 @@ export function gitHub(token: string, repository: string, retryPause = 2000) {
       return paginateWrapped<CheckRun>(`/repos/${repository}/commits/${sha}/check-runs`, "check_runs")
     },
 
+    // The check runs of that name on a commit.
+    checkRunsNamed(sha: string, name: string) {
+      return paginateWrapped<ReviewerCheck>(`/repos/${repository}/commits/${sha}/check-runs?check_name=${encodeURIComponent(name)}`, "check_runs")
+    },
+
     statuses(sha: string) {
-      return paginateWrapped<CommitStatus>(`/repos/${repository}/commits/${sha}/status`, "statuses")
+      return paginateWrapped<ReviewerStatus>(`/repos/${repository}/commits/${sha}/status`, "statuses")
     },
 
     // A user's role in the repository: admin, maintain, write, triage or read, or empty for none. GitHub answers 200
@@ -202,6 +221,26 @@ export function gitHub(token: string, repository: string, retryPause = 2000) {
     async dispatchWorkflow(workflow: string, ref: string) {
       const path = `/repos/${repository}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`
       await request(path, { method: "POST", body: JSON.stringify({ ref }) })
+    },
+
+    // Every review thread of a pull request, with its first comment. A GraphQL answer with errors throws, as GitHub
+    // answers 200 to it.
+    async reviewThreads(number: number) {
+      const [owner, name] = repository.split("/")
+      const threads: ReviewThread[] = []
+      let after: string | null = null
+      do {
+        const body = JSON.stringify({ query: reviewThreadsQuery, variables: { owner, name, number, after } })
+        const answer = (await (await request("/graphql", { method: "POST", body })).json()) as {
+          errors?: unknown[]
+          data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: ReviewThread[] } } } }
+        }
+        if (answer.errors) throw new Error(`GitHub answered GraphQL errors for the review threads of #${number}`)
+        const page = answer.data.repository.pullRequest.reviewThreads
+        threads.push(...page.nodes)
+        after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null
+      } while (after)
+      return threads
     },
 
     reviewComment,
