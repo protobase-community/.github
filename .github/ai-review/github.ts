@@ -1,5 +1,5 @@
 // The GitHub REST calls a review and its auto-merge make. They read the pull request as data; the review writes only
-// its one comment and the approval label, and the auto-merge only merges, starts a workflow after the merge when the caller names one, and deletes the merged head branch when the repository's setting asks for it.
+// its one comment and the approval label, and the auto-merge only merges or fast-forwards the base branch, starts a workflow after the merge when the caller names one, and deletes the merged head branch when the repository's setting asks for it.
 import type { ComparedFile } from "./approval"
 import type { CheckRun, WorkflowRun } from "./checks"
 import type { ReviewerCheck, ReviewerStatus, ReviewThread } from "./fallback-review"
@@ -204,6 +204,12 @@ export function gitHub(token: string, repository: string, retryPause = 2000) {
       const path = `/repos/${repository}/pulls/${number}/merge`
       const answer = (await (await request(path, { method: "PUT", body: JSON.stringify({ sha, merge_method: method }) })).json()) as { sha: string }
       return answer.sha
+    },
+
+    // Moves a branch to a commit only when that is a fast-forward: with force false GitHub refuses any other move.
+    async updateBranch(branch: string, sha: string) {
+      const path = `/repos/${repository}/git/refs/heads/${branch.split("/").map(encodeURIComponent).join("/")}`
+      await request(path, { method: "PATCH", body: JSON.stringify({ sha, force: false }) })
     },
 
     // Sends a repository_dispatch event. A refusal throws with GitHub's answer, which says why.

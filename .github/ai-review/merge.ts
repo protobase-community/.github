@@ -4,7 +4,9 @@
 // commit status on its head finishes. It tries once and never waits, so it holds no runner while checks run: a check
 // still running leaves the merge to the one that finishes last. It never
 // merges a pull request whose head is in another repository, from an author who cannot write to the repository, or
-// that carries the do-not-merge label, nor with a failed check.
+// that carries the do-not-merge label, nor with a failed check. One with the fast-forward label is not merged but its
+// base branch is moved to its head (fast-forward.ts), with the token the merge uses; when the base is no ancestor of
+// the head, nothing is merged and the review comment says why.
 //
 //   REPOSITORY=owner/name PR_NUMBER=1 MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
 //   REPOSITORY=owner/name HEAD_BRANCH=topic MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
@@ -20,8 +22,9 @@
 import { announceMerge } from "./announce"
 import { carriesApproval } from "./approval"
 import { checksState } from "./checks"
-import { approvedSha, marker } from "./comment"
+import { approvedSha, marker, withMergeNote } from "./comment"
 import { deleteMergedHead } from "./delete-head"
+import { landing } from "./fast-forward"
 import { gitHub } from "./github"
 import { mergeAndDispatch } from "./merge-dispatch"
 import { approvedLabel, holdLabel } from "./settings"
@@ -102,7 +105,14 @@ if (checks.state === "pending") stop(`these still run: ${checks.names.join(", ")
 
 // GitHub refuses the merge when the head moved on since it was read.
 const target = { number, sha, base: pullRequest.base.ref }
-const mergeCommit = await mergeAndDispatch(merger, github, target, method, process.env.DISPATCH_AFTER_MERGE)
+const how = await landing(github, merger, { ...target, labels: pullRequest.labels }, method)
+if (how.kind === "refused") {
+  const comment = (await github.reviewComment(number, marker))?.body ?? ""
+  const noted = withMergeNote(comment, how.reason)
+  if (noted !== comment) await github.upsertComment(number, marker, noted)
+  stop(how.reason)
+}
+const mergeCommit = await mergeAndDispatch(how.merger, github, target, how.method, process.env.DISPATCH_AFTER_MERGE)
 if (await announceMerge(github, process.env.MERGE_TOKEN, { number, base: target.base, sha: mergeCommit }))
   console.log(`Sent pull_request_merged for ${mergeCommit.slice(0, 7)} into ${target.base}.`)
 // Only a head in this repository merges, so the branch is this repository's to delete.

@@ -34,3 +34,12 @@ export function approvedSha(body: string) {
   if (!body.startsWith(marker)) return null
   return /^<!-- reviewed ([0-9a-f]{40}) clean -->$/m.exec(body)?.[1] ?? null
 }
+
+const mergeNote = "\n\n<!-- merge note -->\n"
+
+// The review comment with a line saying why the auto-merge merged nothing, in place of any such line it had. The
+// next review of a new head writes the whole comment again, without it.
+export function withMergeNote(body: string, note: string) {
+  const at = body.indexOf(mergeNote)
+  return `${at === -1 ? body : body.slice(0, at)}${mergeNote}**Not merged:** ${note}.`
+}

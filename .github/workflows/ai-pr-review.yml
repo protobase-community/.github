@@ -23,7 +23,11 @@
 # since GitHub skips that setting for a merge made with GITHUB_TOKEN; the delete needs the same contents: write. It
 # never merges a pull request whose head is in another repository or a deleted fork, from an author without write
 # access, whose head moved on while it waited, or that carries the do-not-merge label, and leaves a pull request with
-# a failed check open for a person. Taking do-not-merge off starts the merge again.
+# a failed check open for a person. Taking do-not-merge off starts the merge again. A pull request with the
+# fast-forward label, such as one that merges one long-lived branch into another, is not merged with merge-method: its
+# base branch is moved to its head with the merge's token, which makes no commit, and only while the base is an
+# ancestor of the head; otherwise nothing is merged and the review comment says why. The move is a push, so a branch
+# rule that takes pull requests for every change refuses it unless that token may bypass the rule.
 # Auto-merge needs contents: write and pull-requests: write from the caller, and actions: read, checks: read and
 # statuses: read to wait for the other checks; dispatch-after-merge needs actions: write instead of read. This job asks for no permissions of its own, so a caller without
 # auto-merge keeps working with contents: read and pull-requests: write.
