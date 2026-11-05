@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comment"
+import { analysisThenClean, cleanThenNotes, noneThenLowFinding } from "./comment.answers"
 import { limits, settings } from "./settings"
 
 describe("reviewComment", () => {
@@ -43,9 +44,22 @@ describe("isClean", () => {
     expect(isClean("no issues found")).toBe(true)
   })
 
+  test("is that answer on a line of its own among the checks the model ran", () => {
+    expect(isClean(analysisThenClean)).toBe(true)
+    expect(isClean(cleanThenNotes)).toBe(true)
+  })
+
+  test("is not an answer with a finding, also when it closes with the verdict", () => {
+    expect(isClean("High, a.ts:1, broken.\n\nNo issues found.")).toBe(false)
+    expect(isClean("**Medium** - a.ts:1, broken.\nNo issues found.")).toBe(false)
+    expect(isClean("No issues found.\n\nSeverity: low, a.ts:1, a typo.")).toBe(false)
+    expect(isClean(noneThenLowFinding)).toBe(false)
+  })
+
   test("is not any other answer", () => {
     expect(isClean("")).toBe(false)
     expect(isClean("No issues found, except one: High, a.ts:1 ...")).toBe(false)
+    expect(isClean("Some notes.\nNo issues found in a.ts, but b.ts:1 is broken.")).toBe(false)
   })
 })
 
@@ -54,6 +68,7 @@ describe("approvedSha", () => {
 
   test("is the reviewed commit of a review that found no issues", () => {
     expect(approvedSha(reviewComment(sha, "No issues found."))).toBe(sha)
+    expect(approvedSha(reviewComment(sha, analysisThenClean))).toBe(sha)
   })
 
   test("is null for a review with findings, a skipped review or another comment", () => {
