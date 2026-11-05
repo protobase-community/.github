@@ -39,6 +39,11 @@ export const approvedLabel = "ai-approved"
 // The label that keeps a pull request from being merged automatically, such as one whose merge needs manual steps.
 export const holdLabel = "do-not-merge"
 
+// The label that makes the auto-merge fast-forward the base branch to the pull request's head instead of merging it
+// with the caller's method, such as for a pull request that merges one long-lived branch into another, whose commits
+// have to stay ancestors of the base (fast-forward.ts).
+export const fastForwardLabel = "fast-forward"
+
 // The reviewer whose review decides when the model gives no answer (fallback-review.ts): its GitHub App, whose slug is
 // also its login in GraphQL, its account login in REST, and the name of its check run on a head. Only that app's
 // check and that account's review threads count.

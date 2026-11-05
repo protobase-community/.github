@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comment"
+import { approvedSha, isClean, marker, reviewComment, skipComment, withMergeNote } from "./comment"
 import { analysisThenClean, cleanThenNotes, noneThenLowFinding } from "./comment.answers"
 import { limits, settings } from "./settings"
 
@@ -75,5 +75,16 @@ describe("approvedSha", () => {
     expect(approvedSha(reviewComment(sha, "High, a.ts:1, broken."))).toBeNull()
     expect(approvedSha(skipComment(sha, "too large."))).toBeNull()
     expect(approvedSha(`<!-- reviewed ${sha} clean -->`)).toBeNull()
+  })
+})
+
+describe("withMergeNote", () => {
+  test("adds the note once and replaces an earlier one", () => {
+    const body = reviewComment("a".repeat(40), "No issues found.")
+    const once = withMergeNote(body, "main moved on")
+    expect(once).toBe(`${body}\n\n<!-- merge note -->\n**Not merged:** main moved on.`)
+    expect(withMergeNote(once, "main moved on")).toBe(once)
+    expect(withMergeNote(once, "other")).toBe(`${body}\n\n<!-- merge note -->\n**Not merged:** other.`)
+    expect(approvedSha(once)).toBe("a".repeat(40))
   })
 })

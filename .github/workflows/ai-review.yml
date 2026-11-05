@@ -1,5 +1,6 @@
 # AI review of every pull request; see protobase-community/.github's ai-pr-review workflow. A review that finds no
-# issues also merges the pull request, once every other check passed, unless it carries the do-not-merge label.
+# issues also merges the pull request, once every other check passed, unless it carries the do-not-merge label. With
+# the fast-forward label it moves the base branch to the head instead, making no commit.
 # pull_request_target runs this file from the base branch and never checks out the pull request.
 name: ai-review
 
