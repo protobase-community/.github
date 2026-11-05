@@ -1,6 +1,7 @@
 // Reviews one pull request with the AI model and posts or updates its advisory comment.
 // It reads the pull request only through the GitHub API, as data, and never checks out or runs its code.
 //
+// A pull request whose diff alone is above the input cap is asked about in parts, with one verdict for all (parts.ts).
 // When the model gives no answer, the fallback reviewer's review of the same head decides instead (fallback-review.ts).
 //
 // With AUTO_MERGE=true a review that finds no issues also puts the approval label on, and any other review takes it
@@ -15,7 +16,8 @@ import { decide } from "./decision"
 import { readFallbackReview } from "./fallback-review"
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
-import { contentPaths, fitUserMessage, isPureRename } from "./pull-request"
+import { splitIntoParts } from "./parts"
+import { contentPaths, isPureRename } from "./pull-request"
 import type { Completion } from "./scaleway"
 import { approvedLabel, limits } from "./settings"
 import { emptyAnswerReasoning } from "./verdict"
@@ -70,10 +72,17 @@ for (const path of contentPaths(files)) {
   else contents.set(path, text)
 }
 
-const { message: user } = fitUserMessage(pullRequest, files, contents, tooLarge, limits.maxInputChars)
-if (user.length > limits.maxInputChars) {
-  const size = `${Math.round(user.length / 1000)}k characters`
-  await github.upsertComment(number, marker, skipComment(sha, `its diff alone comes to ${size}, above the cap of ${limits.maxInputChars / 1000}k.`))
+// A diff alone above the cap is asked about in parts that each fit (parts.ts); one that fits is a single part.
+const split = splitIntoParts(pullRequest, files, contents, tooLarge, limits.maxInputChars, limits.maxParts)
+const cap = `${limits.maxInputChars / 1000}k`
+if (split.kind === "file too large") {
+  const reason = `the diff of ${split.path} alone comes to ${Math.round(split.size / 1000)}k characters, above the cap of ${cap}.`
+  await github.upsertComment(number, marker, skipComment(sha, reason))
+  process.exit(0)
+}
+if (split.kind === "too many parts") {
+  const reason = `its diff needs ${split.count} parts of at most ${cap} characters, above the cap of ${limits.maxParts} parts.`
+  await github.upsertComment(number, marker, skipComment(sha, reason))
   process.exit(0)
 }
 
@@ -108,14 +117,19 @@ function logAsk(completion: Completion) {
   if (reasoning !== null) console.log(`The answer is empty; the reasoning ends with:\n${reasoning}`)
 }
 
-const { completion, emptyFirst } = await askForReview(key, system, user)
-if (emptyFirst) {
-  logAsk(emptyFirst)
-  console.log("Asked once more, as the model ended its turn with no answer.")
+const completions: Completion[] = []
+for (const [index, user] of split.messages.entries()) {
+  if (split.messages.length > 1) console.log(`Part ${index + 1} of ${split.messages.length}, ${Math.round(user.length / 1000)}k characters:`)
+  const { completion, emptyFirst } = await askForReview(key, system, user)
+  if (emptyFirst) {
+    logAsk(emptyFirst)
+    console.log("Asked once more, as the model ended its turn with no answer.")
+  }
+  logAsk(completion)
+  completions.push(completion)
 }
-logAsk(completion)
 
-const { body, decidedBy } = await decide(sha, completion, () => readFallbackReview(github, number, sha))
+const { body, decidedBy } = await decide(sha, completions, () => readFallbackReview(github, number, sha))
 console.log(`Decided by ${decidedBy}.`)
 await github.upsertComment(number, marker, body)
 if (autoMerge && approvedSha(body) === sha) await github.addLabel(number, approvedLabel)

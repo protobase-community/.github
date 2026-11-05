@@ -15,8 +15,8 @@ export const settings = {
 }
 
 // What a review may send. Above maxInputChars, full file contents are left out until the whole diff fits; a pull
-// request whose diff alone is above it is skipped with a short note, because a review of half a change reads as a
-// review of all of it. maxInputChars is the largest user message measured to get an answer every time: replays of
+// request whose diff alone is above it is asked about in up to maxParts parts that each fit (parts.ts), and gets one
+// verdict for all of them, because a review of half a change reads as a review of all of it. maxInputChars is the largest user message measured to get an answer every time: replays of
 // public pull requests, 30 asks per setting, gave no empty answer in 240 asks at 155k characters, but about one in two
 // at 291k (15, 14 and 14 of 30), still 7 of 30 with every non-Latin character replaced, and no fewer with top_p 0.95,
 // low reasoning effort or a reordered prompt. Asking once more recovered some of them, never all.
@@ -26,6 +26,8 @@ export const limits = {
   // The most files GitHub lists for a pull request.
   maxListedFiles: 3000,
   maxInputChars: 155_000,
+  // The asks a review of parts makes one after another, each up to about 13 minutes with its second ask.
+  maxParts: 4,
   maxFileChars: 60_000,
   maxCommentChars: 60_000,
 }
@@ -49,7 +51,8 @@ export const fallbackReviewer = {
 
 // How long the review waits for the fallback reviewer's check to finish on the head: a fixed number of reads a fixed
 // interval apart. Its reviews of protobase pull requests took 4 to 18 minutes from the push, and the model's asks up
-// to about 13, so 15 minutes of waiting still fits the job's 35-minute timeout (ai-pr-review.yml).
+// to about 13 per part, so 15 minutes of waiting after limits.maxParts parts still fits the job's 75-minute timeout
+// (ai-pr-review.yml).
 export const fallbackWait = {
   intervalSeconds: 30,
   maxReads: 30,

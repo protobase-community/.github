@@ -85,7 +85,7 @@ export function buildUserMessage(
 
 // The user message, fitted under maxChars. The whole diff always goes. When the message is too large, full
 // contents are left out, largest first, and named as diff only. The result is still above maxChars only when
-// the diff alone is, and then the caller skips the review.
+// the diff alone is, and then the caller asks about it in parts (parts.ts).
 export function fitUserMessage(
   pullRequest: PullRequest,
   files: ChangedFile[],
