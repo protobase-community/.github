@@ -36,3 +36,21 @@ export const approvedLabel = "ai-approved"
 
 // The label that keeps a pull request from being merged automatically, such as one whose merge needs manual steps.
 export const holdLabel = "do-not-merge"
+
+// The reviewer whose review decides when the model gives no answer (fallback-review.ts): its GitHub App, whose slug is
+// also its login in GraphQL, its account login in REST, and the name of its check run on a head. Only that app's
+// check and that account's review threads count.
+export const fallbackReviewer = {
+  name: "CodeRabbit",
+  app: "coderabbitai",
+  login: "coderabbitai[bot]",
+  check: "CodeRabbit",
+}
+
+// How long the review waits for the fallback reviewer's check to finish on the head: a fixed number of reads a fixed
+// interval apart. Its reviews of protobase pull requests took 4 to 18 minutes from the push, and the model's asks up
+// to about 13, so 15 minutes of waiting still fits the job's 35-minute timeout (ai-pr-review.yml).
+export const fallbackWait = {
+  intervalSeconds: 30,
+  maxReads: 30,
+}

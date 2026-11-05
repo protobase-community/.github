@@ -1,6 +1,8 @@
 // Reviews one pull request with the AI model and posts or updates its advisory comment.
 // It reads the pull request only through the GitHub API, as data, and never checks out or runs its code.
 //
+// When the model gives no answer, the fallback reviewer's review of the same head decides instead (fallback-review.ts).
+//
 // With AUTO_MERGE=true a review that finds no issues also puts the approval label on, and any other review takes it
 // off. A head that still carries an earlier approval, because it only merged the base branch in, is not reviewed again
 // and keeps or gets the label.
@@ -8,13 +10,15 @@
 //   REPOSITORY=owner/name PR_NUMBER=1 GITHUB_TOKEN=... SCW_PR_REVIEW_SECRET_KEY=... [AUTO_MERGE=true] bun review.ts
 import { carriesApproval } from "./approval"
 import { askForReview } from "./ask"
-import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comment"
+import { approvedSha, marker, skipComment } from "./comment"
+import { decide } from "./decision"
+import { readFallbackReview } from "./fallback-review"
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
 import { contentPaths, fitUserMessage, isPureRename } from "./pull-request"
 import type { Completion } from "./scaleway"
 import { approvedLabel, limits } from "./settings"
-import { emptyAnswerReasoning, skipReason } from "./verdict"
+import { emptyAnswerReasoning } from "./verdict"
 
 function required(name: string) {
   const value = process.env[name]
@@ -96,8 +100,8 @@ const system = buildSystemPrompt(await loadTemplates(), {
   rules: await rules(),
 })
 
-// An empty answer, or a clean one cut off at the output cap, is not a pass, and the review says so. Only a turn the
-// model ended with no answer is asked once more (ask.ts).
+// An empty answer, or a clean one cut off at the output cap, is not a pass: the fallback reviewer's review of the head
+// decides instead (decision.ts). Only a turn the model ended with no answer is asked once more (ask.ts).
 function logAsk(completion: Completion) {
   console.log(`finish=${completion.finish} usage=${JSON.stringify(completion.usage)}`)
   const reasoning = emptyAnswerReasoning(completion)
@@ -111,6 +115,7 @@ if (emptyFirst) {
 }
 logAsk(completion)
 
-const reason = skipReason(completion)
-await github.upsertComment(number, marker, reason ? skipComment(sha, reason) : reviewComment(sha, completion.content))
-if (autoMerge && !reason && isClean(completion.content)) await github.addLabel(number, approvedLabel)
+const { body, decidedBy } = await decide(sha, completion, () => readFallbackReview(github, number, sha))
+console.log(`Decided by ${decidedBy}.`)
+await github.upsertComment(number, marker, body)
+if (autoMerge && approvedSha(body) === sha) await github.addLabel(number, approvedLabel)

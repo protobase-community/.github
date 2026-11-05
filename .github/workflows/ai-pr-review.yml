@@ -1,4 +1,8 @@
 # Posts one advisory AI review comment on a pull request and updates it on every push. It never blocks a merge.
+# When the model gives no answer, the fallback reviewer named in .github/ai-review/settings.ts decides instead: its
+# finished review of the same head with no open review thread reads clean, its open threads read findings, and without
+# such a review the comment says the pull request was not reviewed. It waits up to 15 minutes for that review, reading
+# the head's checks and statuses, which needs checks: read and statuses: read from the caller.
 #
 # With auto-merge on, a review that finds no issues puts the ai-approved label on the pull request, and the same job
 # then merges it with GITHUB_TOKEN once every other check on the head has passed (.github/ai-review/merge.ts). The
@@ -100,7 +104,8 @@ jobs:
     # as .github/ai-review/caller.yml does; auto-merge also needs contents: write, and actions, checks and statuses
     # read. A permissions block here would either break the callers that grant contents: read or take write away from
     # the ones that grant it.
-    timeout-minutes: 15
+    # The model's asks take up to about 13 minutes and the wait for the fallback reviewer up to 15 more.
+    timeout-minutes: 35
     # Label events and finished checks get groups of their own, so neither cancels a review that is still running. A
     # dispatched review shares the group of push events on purpose: both review the pull request's current head, so
     # the newer one replaces the older. pr-number defaults to 0, which is falsy in an expression, so || falls through.
