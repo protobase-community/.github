@@ -10,10 +10,11 @@ function header(sha: string, verdict: Verdict) {
   return `${marker}\n<!-- reviewed ${sha} ${verdict} -->\n**AI review** of ${sha.slice(0, 7)}. An AI wrote this comment: it is advisory, can be wrong and never blocks a merge.`
 }
 
-export function reviewComment(sha: string, review: string) {
+// A review asked in parts (parts.ts) is clean only when every part's answer is: their joined text alone may not show it.
+export function reviewComment(sha: string, review: string, everyPartClean = true) {
   const text = review.trim() || "The model gave no answer."
   const body = text.length > limits.maxCommentChars ? `${text.slice(0, limits.maxCommentChars)}\n\n(cut off)` : text
-  return `${header(sha, isClean(text) ? "clean" : "findings")}\n\n${body}`
+  return `${header(sha, everyPartClean && isClean(text) ? "clean" : "findings")}\n\n${body}`
 }
 
 export function skipComment(sha: string, reason: string) {

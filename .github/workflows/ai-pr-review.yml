@@ -104,8 +104,9 @@ jobs:
     # as .github/ai-review/caller.yml does; auto-merge also needs contents: write, and actions, checks and statuses
     # read. A permissions block here would either break the callers that grant contents: read or take write away from
     # the ones that grant it.
-    # The model's asks take up to about 13 minutes and the wait for the fallback reviewer up to 15 more.
-    timeout-minutes: 35
+    # The model's asks take up to about 13 minutes per part, for up to 4 parts (limits.maxParts in
+    # .github/ai-review/settings.ts), and the wait for the fallback reviewer up to 15 more.
+    timeout-minutes: 75
     # Label events and finished checks get groups of their own, so neither cancels a review that is still running. A
     # dispatched review shares the group of push events on purpose: both review the pull request's current head, so
     # the newer one replaces the older. pr-number defaults to 0, which is falsy in an expression, so || falls through.
