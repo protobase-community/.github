@@ -7,11 +7,12 @@
 //
 //   REPOSITORY=owner/name PR_NUMBER=1 GITHUB_TOKEN=... SCW_PR_REVIEW_SECRET_KEY=... [AUTO_MERGE=true] bun review.ts
 import { carriesApproval } from "./approval"
+import { askForReview } from "./ask"
 import { approvedSha, isClean, marker, reviewComment, skipComment } from "./comment"
 import { gitHub } from "./github"
 import { buildSystemPrompt, loadTemplates, type Rule } from "./prompt"
 import { contentPaths, fitUserMessage, isPureRename } from "./pull-request"
-import { complete } from "./scaleway"
+import type { Completion } from "./scaleway"
 import { approvedLabel, limits } from "./settings"
 import { emptyAnswerReasoning, skipReason } from "./verdict"
 
@@ -95,12 +96,20 @@ const system = buildSystemPrompt(await loadTemplates(), {
   rules: await rules(),
 })
 
-// One ask only: an empty answer, or a clean one cut off at the output cap, is not a pass, and the
-// review says so instead of asking again.
-const completion = await complete(key, system, user)
-console.log(`finish=${completion.finish} usage=${JSON.stringify(completion.usage)}`)
-const reasoning = emptyAnswerReasoning(completion)
-if (reasoning !== null) console.log(`The answer is empty; the reasoning ends with:\n${reasoning}`)
+// An empty answer, or a clean one cut off at the output cap, is not a pass, and the review says so. Only a turn the
+// model ended with no answer is asked once more (ask.ts).
+function logAsk(completion: Completion) {
+  console.log(`finish=${completion.finish} usage=${JSON.stringify(completion.usage)}`)
+  const reasoning = emptyAnswerReasoning(completion)
+  if (reasoning !== null) console.log(`The answer is empty; the reasoning ends with:\n${reasoning}`)
+}
+
+const { completion, emptyFirst } = await askForReview(key, system, user)
+if (emptyFirst) {
+  logAsk(emptyFirst)
+  console.log("Asked once more, as the model ended its turn with no answer.")
+}
+logAsk(completion)
 
 const reason = skipReason(completion)
 await github.upsertComment(number, marker, reason ? skipComment(sha, reason) : reviewComment(sha, completion.content))
