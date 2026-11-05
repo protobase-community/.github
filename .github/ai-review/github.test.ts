@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { gitHub } from "./github"
+import { gitHub, MergeRefused } from "./github"
 
 const realFetch = globalThis.fetch
 const sent: { url: string; method: string }[] = []
@@ -63,6 +63,32 @@ describe("gitHub", () => {
     answer(500)
     await expect(github().addLabel(7, "ai-approved")).rejects.toThrow("GitHub answered 500 for POST /repos/o/r/issues/7/labels")
     expect(sent).toEqual([{ url: "https://api.github.com/repos/o/r/issues/7/labels", method: "POST" }])
+  })
+})
+
+describe("merge", () => {
+  test("answers the merge commit", async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ sha: "m1" }))) as unknown as typeof fetch
+    expect(await github().merge(115, "c39c3f3", "squash")).toBe("m1")
+  })
+
+  test("a 405 throws MergeRefused with the review decision and merge state, without a retry", async () => {
+    const state = { data: { repository: { pullRequest: { reviewDecision: "CHANGES_REQUESTED", mergeStateStatus: "BLOCKED" } } } }
+    const answers = [new Response("{}", { status: 405 }), new Response(JSON.stringify(state))]
+    globalThis.fetch = (async (url: string, init: RequestInit = {}) => {
+      sent.push({ url, method: init.method ?? "GET" })
+      return answers.shift()
+    }) as typeof fetch
+    const refused = github().merge(115, "c39c3f3", "squash")
+    await expect(refused).rejects.toBeInstanceOf(MergeRefused)
+    await expect(refused).rejects.toMatchObject({ number: 115, reviewDecision: "CHANGES_REQUESTED", mergeStateStatus: "BLOCKED" })
+    await expect(refused).rejects.toThrow("GitHub refused to merge #115: its review decision is CHANGES_REQUESTED and its merge state BLOCKED")
+    expect(sent.map((request) => request.method)).toEqual(["PUT", "POST"])
+  })
+
+  test("another refusal throws naming the status", async () => {
+    answer(409)
+    await expect(github().merge(115, "c39c3f3", "squash")).rejects.toThrow("GitHub answered 409 for PUT /repos/o/r/pulls/115/merge")
   })
 })
 
