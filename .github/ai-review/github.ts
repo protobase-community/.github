@@ -20,6 +20,23 @@ const reviewThreadsQuery = `query($owner: String!, $name: String!, $number: Int!
   }
 }`
 
+// What blocks a pull request's merge, as GitHub's GraphQL API reports it.
+const mergeStateQuery = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewDecision mergeStateStatus } }
+}`
+
+// GitHub answered 405 to a merge: the pull request cannot merge as it is, with what GitHub says blocks it.
+// reviewDecision is null when the repository requires no review.
+export class MergeRefused extends Error {
+  constructor(
+    readonly number: number,
+    readonly reviewDecision: string | null,
+    readonly mergeStateStatus: string,
+  ) {
+    super(`GitHub refused to merge #${number}: its review decision is ${reviewDecision ?? "none"} and its merge state ${mergeStateStatus}`)
+  }
+}
+
 // The server errors GitHub answers now and then and not again a moment later.
 const transient = new Set([500, 502, 503, 504])
 
@@ -199,11 +216,24 @@ export function gitHub(token: string, repository: string, retryPause = 2000) {
     },
 
     // Merges only while the head is still the given commit; GitHub refuses the merge once it moved on. Answers the
-    // merge commit.
+    // merge commit. A 405, such as for a change request still standing, throws MergeRefused with what blocks it.
     async merge(number: number, sha: string, method: string) {
       const path = `/repos/${repository}/pulls/${number}/merge`
-      const answer = (await (await request(path, { method: "PUT", body: JSON.stringify({ sha, merge_method: method }) })).json()) as { sha: string }
-      return answer.sha
+      const init = { method: "PUT", headers: { ...headers, accept: "application/vnd.github+json" }, body: JSON.stringify({ sha, merge_method: method }) }
+      const response = await send(path, init)
+      if (response.status === 405) {
+        const [owner, name] = repository.split("/")
+        const body = JSON.stringify({ query: mergeStateQuery, variables: { owner, name, number } })
+        const answer = (await (await request("/graphql", { method: "POST", body })).json()) as {
+          errors?: unknown[]
+          data: { repository: { pullRequest: { reviewDecision: string | null; mergeStateStatus: string } } }
+        }
+        if (answer.errors) throw new Error(`GitHub answered GraphQL errors for the merge state of #${number}`)
+        const state = answer.data.repository.pullRequest
+        throw new MergeRefused(number, state.reviewDecision, state.mergeStateStatus)
+      }
+      if (!response.ok) throw new Error(`GitHub answered ${response.status} for PUT ${path}`)
+      return ((await response.json()) as { sha: string }).sha
     },
 
     // Moves a branch to a commit only when that is a fast-forward: with force false GitHub refuses any other move.

@@ -1,5 +1,5 @@
 // Picks the pull request a merge retry is for from the event that started it, when another app's check suite
-// completes or another app's commit status changes. Pure: the caller reads the event and, for a status, the pull
+// completes, another app's commit status changes, or a review that may have lifted a block is approved or dismissed. Pure: the caller reads the event and, for a status, the pull
 // requests of its commit. Only a pull request whose head is the event's commit, in this very repository, counts.
 
 export type CheckSuiteEvent = {
@@ -11,6 +11,14 @@ export type CheckSuiteEvent = {
 }
 
 export type StatusEvent = { sha: string; state: string }
+
+// The review's state is lowercase in the event, such as approved or changes_requested. head.repo is null for a deleted
+// fork.
+export type ReviewEvent = {
+  action: string
+  review: { state: string }
+  pull_request: { number: number; state: string; head: { repo: { full_name: string } | null } }
+}
 
 // A pull request as GET /repos/{repo}/commits/{sha}/pulls lists it; repo is null for a deleted fork.
 export type CommitPullRequest = { number: number; state: string; head: { sha: string; repo: { full_name: string } | null } }
@@ -28,4 +36,13 @@ export function statusPullRequest(event: StatusEvent, pulls: CommitPullRequest[]
   if (event.state === "pending") return null
   const match = pulls.find((pull) => pull.state === "open" && pull.head.sha === event.sha && pull.head.repo?.full_name === repository)
   return match?.number ?? null
+}
+
+// An approval, or a dismissal, can lift the change request that blocked a merge; a review that only comments or
+// requests changes lifts none.
+export function reviewPullRequest(event: ReviewEvent, repository: string) {
+  const pull = event.pull_request
+  if (pull.state !== "open" || pull.head.repo?.full_name !== repository) return null
+  const lifts = event.action === "dismissed" || (event.action === "submitted" && event.review.state === "approved")
+  return lifts ? pull.number : null
 }

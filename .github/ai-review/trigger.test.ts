@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { checkSuitePullRequest, statusPullRequest } from "./trigger"
+import { checkSuitePullRequest, reviewPullRequest, statusPullRequest } from "./trigger"
 
 const sha = "b61e1b0"
 
@@ -46,5 +46,36 @@ describe("statusPullRequest", () => {
     expect(statusPullRequest({ sha, state: "success" }, [pull(75, "open", sha, null)], repository)).toBeNull()
     expect(statusPullRequest({ sha, state: "success" }, [pull(75, "open", "c0ffee0", repository)], repository)).toBeNull()
     expect(statusPullRequest({ sha, state: "error" }, [], repository)).toBeNull()
+  })
+})
+
+describe("reviewPullRequest", () => {
+  const repository = "owner/name"
+  const review = (action: string, state: string, pullState = "open", repo: string | null = repository) => ({
+    action,
+    review: { state },
+    pull_request: { number: 115, state: pullState, head: { repo: repo === null ? null : { full_name: repo } } },
+  })
+
+  test("gives the open pull request in this repository that a review approved", () => {
+    expect(reviewPullRequest(review("submitted", "approved"), repository)).toBe(115)
+  })
+
+  test("gives the open pull request in this repository whose review was dismissed", () => {
+    expect(reviewPullRequest(review("dismissed", "dismissed"), repository)).toBe(115)
+  })
+
+  test("gives none for a review that only comments or requests changes", () => {
+    expect(reviewPullRequest(review("submitted", "commented"), repository)).toBeNull()
+    expect(reviewPullRequest(review("submitted", "changes_requested"), repository)).toBeNull()
+  })
+
+  test("gives none for a fork's head or a deleted fork", () => {
+    expect(reviewPullRequest(review("submitted", "approved", "open", "fork/name"), repository)).toBeNull()
+    expect(reviewPullRequest(review("submitted", "approved", "open", null), repository)).toBeNull()
+  })
+
+  test("gives none for a closed pull request", () => {
+    expect(reviewPullRequest(review("submitted", "approved", "closed"), repository)).toBeNull()
   })
 })
