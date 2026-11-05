@@ -8,7 +8,11 @@
 # then merges it with GITHUB_TOKEN once every other check on the head has passed (.github/ai-review/merge.ts). The
 # merge never waits, so it holds no runner: while checks still run, the caller's workflow_run trigger on its CI
 # workflows tries again each time one finishes, and its check_suite and status triggers each time another app's check
-# suite or commit status finishes, so the last one merges.
+# suite or commit status finishes, so the last one merges. A merge GitHub blocks, such as for a reviewer's change
+# request still standing, ends without failing too: the caller's pull_request_review trigger tries again when a review
+# is approved or dismissed. That event runs the caller from the pull request's merge commit, so its checks show on the
+# head; the caller gives it a job of its own, so it adds no check under the review's name, and here it runs the merge
+# step alone, only for an open pull request whose head is in the same repository.
 # A merge with GITHUB_TOKEN starts no workflow on the base branch; a caller whose base branch has to run one, such as
 # a deploy on a push, names it in dispatch-after-merge, which needs no token: right after a merge this run made, it
 # starts that workflow with workflow_dispatch on the base branch, as a dispatch with GITHUB_TOKEN does start one. That
@@ -91,13 +95,20 @@ jobs:
     # requests of a repository's own workflows. Of label events only adding the approval label and taking the hold label off count. Every
     # pull_request_target event, labeled too, carries github.event.pull_request; workflow_dispatch, workflow_run,
     # check_suite and status have none, so they are checked first. A CI run counts only on a branch of this repository,
-    # never a fork's; another app's check suite only with a pull request, which a fork's branch never lists; and
-    # another app's status only once it is final, as merge.ts finds its pull request from the commit.
+    # never a fork's; another app's check suite only with a pull request, which a fork's branch never lists;
+    # another app's status only once it is final, as merge.ts finds its pull request from the commit; and a review only
+    # when it approves or was dismissed, on an open pull request whose head is in this repository. A review event also
+    # carries github.event.pull_request, so the last group leaves it out.
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_review' &&
+        github.event.pull_request.state == 'open' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        (github.event.action == 'dismissed' || (github.event.action == 'submitted' && github.event.review.state == 'approved'))) ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository) ||
       (github.event_name == 'check_suite' && github.event.check_suite.pull_requests[0] != null) ||
       (github.event_name == 'status' && github.event.state != 'pending') || (
+        github.event_name != 'pull_request_review' &&
         !github.event.pull_request.draft &&
         github.event.pull_request.state == 'open' &&
         (github.event.pull_request.user.type != 'Bot' || github.event.pull_request.user.id == 41898282) &&
@@ -111,12 +122,12 @@ jobs:
     # The model's asks take up to about 13 minutes per part, for up to 4 parts (limits.maxParts in
     # .github/ai-review/settings.ts), and the wait for the fallback reviewer up to 15 more.
     timeout-minutes: 75
-    # Label events and finished checks get groups of their own, so neither cancels a review that is still running. A
-    # dispatched review shares the group of push events on purpose: both review the pull request's current head, so
-    # the newer one replaces the older. pr-number defaults to 0, which is falsy in an expression, so || falls through.
+    # Label events and finished checks, reviews among them, get groups of their own, so neither cancels a review that
+    # is still running. A dispatched review shares the group of push events on purpose: both review the pull request's
+    # current head, so the newer one replaces the older. pr-number defaults to 0, which is falsy in an expression, so || falls through.
     # A status names no branch of its own, so its commit stands in.
     concurrency:
-      group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number || github.event.workflow_run.head_branch || github.event.check_suite.head_branch || github.event.sha }}-${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && 'label' || (github.event_name == 'workflow_run' || github.event_name == 'check_suite' || github.event_name == 'status') && 'checks' || 'push' }}
+      group: ai-pr-review-${{ github.repository }}-${{ inputs.pr-number || github.event.pull_request.number || github.event.workflow_run.head_branch || github.event.check_suite.head_branch || github.event.sha }}-${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && 'label' || (github.event_name == 'workflow_run' || github.event_name == 'check_suite' || github.event_name == 'status' || github.event_name == 'pull_request_review') && 'checks' || 'push' }}
       cancel-in-progress: true
     env:
       # A CI run started with workflow_dispatch names no pull request; merge.ts then finds it by HEAD_BRANCH. For another

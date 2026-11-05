@@ -1,8 +1,9 @@
 // Merges a pull request that carries the ai-approved label and a clean AI review of its head, once everything else on
 // the head has passed. It runs in the review's job after the review, alone when the label is added or the branch only
 // merged its base in, when a CI run on the pull request's branch finishes, and when another app's check suite or
-// commit status on its head finishes. It tries once and never waits, so it holds no runner while checks run: a check
-// still running leaves the merge to the one that finishes last. It never
+// commit status on its head finishes, or a review on it is approved or dismissed. It tries once and never waits, so it
+// holds no runner while checks run: a check still running leaves the merge to the one that finishes last, and a block
+// GitHub reports, such as a change request still standing, to the review that lifts it. It never
 // merges a pull request whose head is in another repository, from an author who cannot write to the repository, or
 // that carries the do-not-merge label, nor with a failed check. One with the fast-forward label is not merged but its
 // base branch is moved to its head (fast-forward.ts), with the token the merge uses; when the base is no ancestor of
@@ -25,10 +26,17 @@ import { checksState } from "./checks"
 import { approvedSha, marker, withMergeNote } from "./comment"
 import { deleteMergedHead } from "./delete-head"
 import { landing } from "./fast-forward"
-import { gitHub } from "./github"
+import { gitHub, MergeRefused } from "./github"
 import { mergeAndDispatch } from "./merge-dispatch"
 import { approvedLabel, holdLabel } from "./settings"
-import { type CheckSuiteEvent, checkSuitePullRequest, type StatusEvent, statusPullRequest } from "./trigger"
+import {
+  type CheckSuiteEvent,
+  checkSuitePullRequest,
+  type ReviewEvent,
+  reviewPullRequest,
+  type StatusEvent,
+  statusPullRequest,
+} from "./trigger"
 
 function required(name: string) {
   const value = process.env[name]
@@ -46,9 +54,12 @@ function stop(reason: string): never {
   process.exit(0)
 }
 
-// Another app's check suite or commit status that finished names its pull request only in the event, if at all.
+// Another app's check suite or commit status that finished names its pull request only in the event, if at all. A
+// review counts only when it may have lifted a block.
 async function eventPullRequest(name: string) {
   const event = await Bun.file(required("GITHUB_EVENT_PATH")).json()
+  if (name === "pull_request_review")
+    return reviewPullRequest(event as ReviewEvent, repository) ?? stop(`the review lifts no block on an open pull request whose head is in ${repository}`)
   const found =
     name === "check_suite"
       ? checkSuitePullRequest(event as CheckSuiteEvent)
@@ -59,7 +70,7 @@ async function eventPullRequest(name: string) {
 // A CI run started with workflow_dispatch names no pull request, so its branch finds the open one. 0 names none either.
 async function pullRequestNumber() {
   const event = process.env.GITHUB_EVENT_NAME
-  if (event === "check_suite" || event === "status") return eventPullRequest(event)
+  if (event === "check_suite" || event === "status" || event === "pull_request_review") return eventPullRequest(event)
   const given = Number(process.env.PR_NUMBER || 0)
   if (given > 0) return given
   return (await github.openPullRequest(required("HEAD_BRANCH"))) ?? stop(`no open pull request has the head ${process.env.HEAD_BRANCH}`)
@@ -112,7 +123,17 @@ if (how.kind === "refused") {
   if (noted !== comment) await github.upsertComment(number, marker, noted)
   stop(how.reason)
 }
-const mergeCommit = await mergeAndDispatch(how.merger, github, target, how.method, process.env.DISPATCH_AFTER_MERGE)
+// A merge GitHub blocks, such as for a change request still standing or a required check, waits for what lifts the
+// block: an approval or a dismissed review starts the merge again, as a finished check does. Any other refusal fails.
+async function merged() {
+  try {
+    return await mergeAndDispatch(how.merger, github, target, how.method, process.env.DISPATCH_AFTER_MERGE)
+  } catch (error) {
+    if (error instanceof MergeRefused && error.mergeStateStatus === "BLOCKED") stop(error.message)
+    throw error
+  }
+}
+const mergeCommit = await merged()
 if (await announceMerge(github, process.env.MERGE_TOKEN, { number, base: target.base, sha: mergeCommit }))
   console.log(`Sent pull_request_merged for ${mergeCommit.slice(0, 7)} into ${target.base}.`)
 // Only a head in this repository merges, so the branch is this repository's to delete.
