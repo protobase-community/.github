@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { splitIntoParts } from "./parts"
 import { type ChangedFile, fitUserMessage } from "./pull-request"
+import { limits } from "./settings"
 
 const pullRequest = { title: "feat: the workflow engine", body: "Runs workflows." }
 const file = (name: string, patchChars: number): ChangedFile => ({
@@ -58,5 +59,22 @@ describe("splitIntoParts", () => {
   test("a diff that needs more parts than the cap is no split, naming the count", () => {
     const files = Array.from({ length: 5 }, (_, index) => file(`src/f${index}.ts`, 100_000))
     expect(splitIntoParts(pullRequest, files, new Map(), [], 155_000, 4)).toEqual({ kind: "too many parts", count: 5 })
+  })
+
+  test("a 216k diff of many files with contents is two asks, each whole message within the input cap", () => {
+    const files = Array.from({ length: 72 }, (_, index) => file(`src/f${index}.ts`, 3000))
+    const contents = new Map(files.map((changed) => [changed.filename, "c".repeat(4000)]))
+    const messages = messagesOf(splitIntoParts(pullRequest, files, contents, [], limits.maxInputChars, limits.maxParts))
+    expect(messages).toHaveLength(2)
+    for (const message of messages) expect(message.length).toBeLessThanOrEqual(limits.maxInputChars)
+  })
+
+  test("a 110k diff whose contents take it above the input cap is one ask with some contents left out", () => {
+    const files = Array.from({ length: 30 }, (_, index) => file(`src/f${index}.ts`, 3600))
+    const contents = new Map(files.map((changed) => [changed.filename, "c".repeat(2000)]))
+    const messages = messagesOf(splitIntoParts(pullRequest, files, contents, [], limits.maxInputChars, limits.maxParts))
+    expect(messages).toHaveLength(1)
+    expect(messages[0].length).toBeLessThanOrEqual(limits.maxInputChars)
+    expect(messages[0].split("c".repeat(2000)).length - 1).toBeLessThan(files.length)
   })
 })
