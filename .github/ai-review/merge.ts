@@ -7,7 +7,8 @@
 // merges a pull request whose head is in another repository, from an author who cannot write to the repository, or
 // that carries the do-not-merge label, nor with a failed check. One with the fast-forward label is not merged but its
 // base branch is moved to its head (fast-forward.ts), with the token the merge uses; when the base is no ancestor of
-// the head, nothing is merged and the review comment says why.
+// the head, nothing is merged and the review comment says why. Without MERGE_TOKEN a pull request that changes workflow
+// files is not merged either, as GitHub refuses that to GITHUB_TOKEN (workflow-files.ts); the review comment says so.
 //
 //   REPOSITORY=owner/name PR_NUMBER=1 MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
 //   REPOSITORY=owner/name HEAD_BRANCH=topic MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
@@ -29,6 +30,7 @@ import { landing } from "./fast-forward"
 import { gitHub, MergeRefused } from "./github"
 import { mergeAndDispatch } from "./merge-dispatch"
 import { approvedLabel, holdLabel } from "./settings"
+import { workflowRefusal } from "./workflow-files"
 import {
   type CheckSuiteEvent,
   checkSuitePullRequest,
@@ -114,13 +116,26 @@ const checks = checksState(await github.workflowRuns(sha), await github.checkRun
 if (checks.state === "red") stop(`these did not pass: ${checks.names.join(", ")}`)
 if (checks.state === "pending") stop(`these still run: ${checks.names.join(", ")}; the check that finishes last merges it`)
 
+// A refusal a person has to act on is noted on the review comment before the run stops.
+async function noteRefusal(reason: string) {
+  const comment = (await github.reviewComment(number, marker))?.body ?? ""
+  const noted = withMergeNote(comment, reason)
+  if (noted !== comment) await github.upsertComment(number, marker, noted)
+}
+
+if (!process.env.MERGE_TOKEN) {
+  const workflows = workflowRefusal(await github.changedFiles(number, pullRequest.changed_files), pullRequest.changed_files)
+  if (workflows) {
+    await noteRefusal(workflows)
+    stop(workflows)
+  }
+}
+
 // GitHub refuses the merge when the head moved on since it was read.
 const target = { number, sha, base: pullRequest.base.ref }
 const how = await landing(github, merger, { ...target, labels: pullRequest.labels }, method)
 if (how.kind === "refused") {
-  const comment = (await github.reviewComment(number, marker))?.body ?? ""
-  const noted = withMergeNote(comment, how.reason)
-  if (noted !== comment) await github.upsertComment(number, marker, noted)
+  await noteRefusal(how.reason)
   stop(how.reason)
 }
 // A merge GitHub blocks, such as for a change request still standing or a required check, waits for what lifts the
