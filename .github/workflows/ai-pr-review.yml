@@ -15,8 +15,9 @@
 # step alone, only for an open pull request whose head is in the same repository.
 # A merge with GITHUB_TOKEN starts no workflow on the base branch; a caller whose base branch has to run one, such as
 # a deploy on a push, names it in dispatch-after-merge, which needs no token: right after a merge this run made, it
-# starts that workflow with workflow_dispatch on the base branch, as a dispatch with GITHUB_TOKEN does start one. That
-# workflow needs a workflow_dispatch trigger, and the caller actions: write. MERGE_TOKEN, a separate token that only
+# starts that workflow with workflow_dispatch on the base branch, as a dispatch with GITHUB_TOKEN does start one. It
+# takes several names, separated by commas or whitespace, and tries every one. Each workflow
+# needs a workflow_dispatch trigger, and the caller actions: write. MERGE_TOKEN, a separate token that only
 # the merge itself uses, still works instead. Without MERGE_TOKEN the merge also sends the pull_request_merged
 # repository_dispatch, which a caller's workflow on the default branch listens for with
 # `on: repository_dispatch: types: [pull_request_merged]`; its client_payload holds number (the pull request), base
@@ -65,8 +66,9 @@ on:
         default: squash
       dispatch-after-merge:
         description: >-
-          A workflow file name, such as release.yml, that auto-merge starts with workflow_dispatch on the base branch
-          right after it merges, with GITHUB_TOKEN. It needs actions: write from the caller.
+          Workflow file names, such as release.yml, separated by commas or whitespace, that auto-merge starts with
+          workflow_dispatch on the base branch right after it merges, with GITHUB_TOKEN. It needs actions: write from
+          the caller.
         type: string
         default: ''
       pr-number:

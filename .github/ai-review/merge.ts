@@ -13,9 +13,9 @@
 //   REPOSITORY=owner/name HEAD_BRANCH=topic MERGE_METHOD=squash RUN_ID=... GITHUB_TOKEN=... bun merge.ts
 //
 // MERGE_TOKEN, when set, makes the merge itself, so its push starts the base branch's workflows, as one with
-// GITHUB_TOKEN does not; everything before it reads with GITHUB_TOKEN. DISPATCH_AFTER_MERGE, a workflow file name such
-// as release.yml, is the way that needs no token: right after the merge it starts that workflow with
-// workflow_dispatch on the base branch, with GITHUB_TOKEN.
+// GITHUB_TOKEN does not; everything before it reads with GITHUB_TOKEN. DISPATCH_AFTER_MERGE, workflow file names such
+// as release.yml, separated by commas or whitespace, is the way that needs no token: right after the merge it starts
+// each of them with workflow_dispatch on the base branch, with GITHUB_TOKEN.
 // Without MERGE_TOKEN the merge also sends the pull_request_merged repository_dispatch (announce.ts), and a refused one
 // fails the run.
 // After the merge it deletes the head branch when the repository's "Automatically delete head branches" setting is on,

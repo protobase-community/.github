@@ -33,7 +33,8 @@ on:
         type: number
 
 # Merging a pull request takes contents: write: https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps#repository-permissions-for-contents
-# dispatch-after-merge, to start a workflow such as a release on the base branch after a merge, needs actions: write.
+# dispatch-after-merge, to start workflows such as a release on the base branch after a merge, needs actions: write.
+# It takes several file names, separated by commas or whitespace.
 permissions:
   actions: read
   checks: read
