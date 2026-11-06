@@ -105,8 +105,20 @@ export function gitHub(token: string, repository: string, retryPause = 2000) {
   return {
     fileAt,
 
+    // GitHub documents a 422 for this read, "validation failed, or the endpoint has been spammed", and answered it once
+    // to a review that read a pull request seconds after it was opened, and 200 to the same read later. A 422 is sent
+    // again once after the fixed pause, with GitHub's answer logged so its cause shows; a second one throws.
     async pullRequest(number: number) {
-      return (await (await request(`/repos/${repository}/pulls/${number}`)).json()) as {
+      const path = `/repos/${repository}/pulls/${number}`
+      const init = { headers: { ...headers, accept: "application/vnd.github+json" } }
+      let response = await send(path, init)
+      if (response.status === 422) {
+        console.log(`GitHub answered 422 for GET ${path}, sending it again: ${await response.text()}`)
+        await new Promise((resolve) => setTimeout(resolve, retryPause))
+        response = await send(path, init)
+      }
+      if (!response.ok) throw new Error(`GitHub answered ${response.status} for GET ${path}`)
+      return (await response.json()) as {
         title: string
         body: string | null
         state: string

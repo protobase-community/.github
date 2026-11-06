@@ -53,6 +53,21 @@ describe("gitHub", () => {
     expect(sent).toHaveLength(1)
   })
 
+  test("a pull request GitHub answers 422 for is read again once and answers the second body", async () => {
+    answer(422, 200)
+    expect(await github().pullRequest(7)).toEqual({ status: 200 })
+    expect(sent).toEqual([
+      { url: "https://api.github.com/repos/o/r/pulls/7", method: "GET" },
+      { url: "https://api.github.com/repos/o/r/pulls/7", method: "GET" },
+    ])
+  })
+
+  test("a pull request GitHub answers 422 for twice throws naming the status", async () => {
+    answer(422, 422)
+    await expect(github().pullRequest(7)).rejects.toThrow("GitHub answered 422 for GET /repos/o/r/pulls/7")
+    expect(sent).toHaveLength(2)
+  })
+
   test("a 4xx is not retried", async () => {
     answer(403)
     await expect(github().pullRequest(7)).rejects.toThrow("GitHub answered 403 for GET /repos/o/r/pulls/7")
