@@ -2,10 +2,11 @@
 // Settings come from the Scaleway model reliability benchmark: qwen3.8-27b made no false claims and caught every known
 // real bug, at temperature 0.6 and medium reasoning effort (it offers no high). The output cap is Scaleway's 32k
 // maximum. max_tokens counts reasoning and answer together. Now and then the model gives no answer, and the review
-// then says it was not reviewed: it can reason until that cap, or end its turn well below it with an empty reply,
-// whose reasoning the job log then shows. Only settings Scaleway documents are sent. Only that second kind is asked once
-// more (ask.ts), as it still happens inside the input cap (firstmate-backlog PR #9, 148k); asking again until an answer
-// passes would make the verdict a draw.
+// then says it was not reviewed: it can reason until that cap, or, well below it, stop mid-sentence in its reasoning
+// and reply with nothing; the job log then shows that reasoning's end. Both come with a long reasoning, which a large
+// input brings (limits below). Only settings Scaleway documents are sent. Only that second kind is asked once more
+// (ask.ts), as it still happens inside the input cap; asking again until an answer passes would make the verdict a
+// draw.
 export const settings = {
   model: "qwen3.8-27b",
   endpoint: "https://api.scaleway.ai/v1/chat/completions",
@@ -16,16 +17,18 @@ export const settings = {
 
 // What a review may send. Above maxInputChars, full file contents are left out until the whole diff fits; a pull
 // request whose diff alone is above it is asked about in up to maxParts parts that each fit (parts.ts), and gets one
-// verdict for all of them, because a review of half a change reads as a review of all of it. maxInputChars is the largest user message measured to get an answer every time: replays of
-// public pull requests, 30 asks per setting, gave no empty answer in 240 asks at 155k characters, but about one in two
-// at 291k (15, 14 and 14 of 30), still 7 of 30 with every non-Latin character replaced, and no fewer with top_p 0.95,
-// low reasoning effort or a reordered prompt. Asking once more recovered some of them, never all.
+// verdict for all of them, because a review of half a change reads as a review of all of it. What gets an answer is
+// the ask's size in tokens. Replays of a public pull request, 30 asks per setting, gave no empty answer in 240 asks at
+// 155k characters, but about one in two at 291k, and no fewer with top_p 0.95, low reasoning effort or a reordered
+// prompt. That prose ran about 3.6 characters per token; code runs about 3.35, so 155k came to about 46k tokens on live
+// reviews, where 13 of 35 asks of 44k tokens or more gave no answer, against 1 of 39 below. maxInputChars keeps an ask
+// of code near 39k tokens.
 export const limits = {
   // Files with changes; a file only renamed counts toward no cap.
   maxFiles: 150,
   // The most files GitHub lists for a pull request.
   maxListedFiles: 3000,
-  maxInputChars: 155_000,
+  maxInputChars: 130_000,
   // The asks a review of parts makes one after another, each up to about 13 minutes with its second ask.
   maxParts: 4,
   maxFileChars: 60_000,
