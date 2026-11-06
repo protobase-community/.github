@@ -101,9 +101,9 @@ describe("merge", () => {
     expect(sent.map((request) => request.method)).toEqual(["PUT", "POST"])
   })
 
-  test("another refusal throws naming the status", async () => {
-    answer(409)
-    await expect(github().merge(115, "c39c3f3", "squash")).rejects.toThrow("GitHub answered 409 for PUT /repos/o/r/pulls/115/merge")
+  test("another refusal throws naming the status and GitHub's answer", async () => {
+    answer(403)
+    await expect(github().merge(115, "c39c3f3", "squash")).rejects.toThrow('GitHub answered 403 for PUT /repos/o/r/pulls/115/merge: {"status":403}')
   })
 })
 

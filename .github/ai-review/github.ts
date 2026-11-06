@@ -228,7 +228,8 @@ export function gitHub(token: string, repository: string, retryPause = 2000) {
     },
 
     // Merges only while the head is still the given commit; GitHub refuses the merge once it moved on. Answers the
-    // merge commit. A 405, such as for a change request still standing, throws MergeRefused with what blocks it.
+    // merge commit. A 405, such as for a change request still standing, throws MergeRefused with what blocks it;
+    // any other refusal throws with GitHub's answer, which says why.
     async merge(number: number, sha: string, method: string) {
       const path = `/repos/${repository}/pulls/${number}/merge`
       const init = { method: "PUT", headers: { ...headers, accept: "application/vnd.github+json" }, body: JSON.stringify({ sha, merge_method: method }) }
@@ -244,7 +245,7 @@ export function gitHub(token: string, repository: string, retryPause = 2000) {
         const state = answer.data.repository.pullRequest
         throw new MergeRefused(number, state.reviewDecision, state.mergeStateStatus)
       }
-      if (!response.ok) throw new Error(`GitHub answered ${response.status} for PUT ${path}`)
+      if (!response.ok) throw new Error(`GitHub answered ${response.status} for PUT ${path}: ${await response.text()}`)
       return ((await response.json()) as { sha: string }).sha
     },
 
