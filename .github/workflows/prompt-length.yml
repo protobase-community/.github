@@ -1,0 +1,65 @@
+# Fails when a file of review instructions is longer than the AI review bot that reads it accepts, so a bot never
+# silently cuts the end off. cubic uses only the first 10,000 characters of a custom agent's text and linked files;
+# CodeRabbit allows 20,000 characters per path instruction and 10,000 per custom pre-merge check.
+#
+# A caller lists one file per line in files: its path in the calling repository, a space, and its character limit:
+#
+#   jobs:
+#     prompt-length:
+#       uses: protobase-community/.github/.github/workflows/prompt-length.yml@main # zizmor: ignore[unpinned-uses] main is the reviewed version
+#       with:
+#         files: |
+#           cubic.yaml 10000
+#
+# Characters are Unicode code points, as the vendors' JSON schemas count maxLength, not bytes: an "é" is one.
+name: prompt-length
+
+on:
+  workflow_call:
+    inputs:
+      files:
+        description: One file per line, its path and its character limit separated by a space, such as `cubic.yaml 10000`.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - env:
+          FILES: ${{ inputs.files }}
+          # wc -m counts characters only under a UTF-8 locale; under C it counts bytes.
+          LC_ALL: C.UTF-8
+        run: |
+          over=0
+          while IFS= read -r line; do
+            [ -z "${line// }" ] && continue
+            path="${line% *}"
+            limit="${line##* }"
+            if ! [[ "$limit" =~ ^[0-9]+$ ]]; then
+              echo "::error::\"$line\" names no character limit after its path"
+              over=1
+              continue
+            fi
+            if [ ! -f "$path" ]; then
+              echo "::error file=$path::$path does not exist"
+              over=1
+              continue
+            fi
+            length=$(( $(wc -m < "$path") ))
+            if [ "$length" -gt "$limit" ]; then
+              echo "::error file=$path::$path is $length characters, over its limit of $limit"
+              over=1
+            else
+              echo "$path is $length characters, within its limit of $limit"
+            fi
+          done <<< "$FILES"
+          exit "$over"
