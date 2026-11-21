@@ -1,0 +1,60 @@
+# The shared auto-merge on approval: a repository whose pull requests land on CodeRabbit's review, with its AI review
+# off, calls it from a workflow of its own with the triggers below, and its pull requests with the
+# auto-merge-approvals label merge inside GitHub once approved after the label and green (.github/auto-merge-approvals).
+# The caller names its own CI workflows under workflow_run, since a called workflow takes its caller's triggers:
+#
+#   on:
+#     pull_request_target: # zizmor: ignore[dangerous-triggers] nothing from the pull request runs
+#       types: [ready_for_review, unlabeled]
+#     pull_request_review:
+#       types: [submitted, dismissed]
+#     workflow_run:
+#       workflows: [ci]  # the repository's own CI workflows, never auto-merge-approvals itself
+#       types: [completed]
+#     check_suite:
+#       types: [completed]
+#     status:
+#   permissions:
+#     actions: write
+#     checks: read
+#     contents: write
+#     pull-requests: write
+#     statuses: read
+#   jobs:
+#     merge:
+#       uses: protobase-community/.github/.github/workflows/auto-merge-approvals.yml@main
+#
+# It merges with the caller's GITHUB_TOKEN. A pull request that changes a workflow never merges itself, as such a change
+# could turn off the checks the merge waits on: it is left to a maintainer, which it says once on the pull request.
+name: auto-merge-approvals
+
+on:
+  workflow_call:
+    inputs:
+      dispatch-after-merge:
+        description: Workflow files, space-separated, started after a merge into the default branch, as a merge with GITHUB_TOKEN starts none.
+        type: string
+        default: ''
+
+jobs:
+  merge:
+    # A fork's pull request, branch or check suite runs nothing, and neither does a pull request without the label.
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'check_suite' && github.event.check_suite.pull_requests[0] != null) ||
+      (github.event_name == 'status' && github.event.state != 'pending') ||
+      ((github.event_name == 'pull_request_review' || github.event_name == 'pull_request_target') &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(github.event.pull_request.labels.*.name, 'auto-merge-approvals'))
+    # Runs for one head take turns, and a later one finds it merged and stops, so one merge starts one dispatch.
+    concurrency:
+      group: auto-merge-approvals-${{ github.repository }}-${{ github.event.workflow_run.head_sha || github.event.check_suite.head_sha || github.event.pull_request.head.sha || github.event.sha }}
+      queue: max
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: protobase-community/.github/.github/auto-merge-approvals@main # zizmor: ignore[unpinned-uses] main is the reviewed version
+        with:
+          token: ${{ github.token }}
+          default-branch: ${{ github.event.repository.default_branch }}
+          dispatch-after-merge: ${{ inputs.dispatch-after-merge }}

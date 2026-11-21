@@ -1,0 +1,29 @@
+# Runs the auto-merge-approvals unit tests on every pull request and push to main that touches the action.
+name: auto-merge-approvals-test
+
+on:
+  pull_request:
+    paths: [.github/auto-merge-approvals/**, .github/workflows/auto-merge-approvals-test.yml]
+  push:
+    branches: [main]
+    paths: [.github/auto-merge-approvals/**, .github/workflows/auto-merge-approvals-test.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .github/auto-merge-approvals
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun run test
