@@ -56,7 +56,7 @@ async function whyNot(pull: Awaited<ReturnType<typeof github.pullRequest>>) {
   if (pull.user) logins.add(pull.user.login)
   const roles = Object.fromEntries(await Promise.all([...logins].map(async (login) => [login, await github.role(login)])))
   const followUpCleanAt = cleanFollowUpAt(comments, pull.head.sha)
-  const botFinished = reviewBotFinished(head.checkRuns, botApprovedHead(reviews, pull.head.sha, timeline))
+  const botFinished = reviewBotFinished(head.checkRuns, botApprovedHead(reviews, pull.head.sha))
   return refusal({ repository, pull, timeline, reviews, files, roles, followUpCleanAt, checks: head.checks, reviewBotFinished: botFinished })
 }
 
