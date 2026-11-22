@@ -6,9 +6,16 @@ export type CheckRun = { name: string; status: string; conclusion: string | null
 export type CommitStatus = { context: string; state: string }
 export type ChecksState = { state: 'green' | 'pending' | 'red'; names: string[] }
 
-// Whether CodeRabbit's own check on the commit finished, by the app that wrote it, as anything can take its name.
-export const reviewBotFinished = (checkRuns: CheckRun[]) =>
-  checkRuns.some((check) => check.app?.slug === 'coderabbitai' && check.name === 'CodeRabbit' && check.conclusion === 'success')
+// Whether CodeRabbit's own check on the commit finished, by the app that wrote it, as anything can take its name. The
+// check is skipped when the commit brings nothing to review, such as a merge of the base branch, and then it counts only
+// when the bot approved that exact commit after the label (botApprovedHead).
+export const reviewBotFinished = (checkRuns: CheckRun[], botApprovedHead: boolean) =>
+  checkRuns.some(
+    (check) =>
+      check.app?.slug === 'coderabbitai' &&
+      check.name === 'CodeRabbit' &&
+      (check.conclusion === 'success' || (check.conclusion === 'skipped' && botApprovedHead)),
+  )
 
 const passed = new Set(['success', 'skipped', 'neutral'])
 

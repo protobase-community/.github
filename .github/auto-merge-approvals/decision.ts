@@ -85,6 +85,15 @@ function standingChangeRequests(reviews: Review[], head: string) {
   return [...verdicts].filter(([, state]) => state === 'CHANGES_REQUESTED').map(([login]) => login ?? 'a deleted account')
 }
 
+// Whether the review bot approved the head after the label was last added.
+export function botApprovedHead(reviews: Review[], head: string, timeline: TimelineEvent[]) {
+  const labelled = labelledAt(timeline)
+  if (labelled === null) return false
+  return onHead(reviews, head).some(
+    (review) => review.user?.login === reviewBot && review.state === 'APPROVED' && Date.parse(review.submitted_at) > labelled,
+  )
+}
+
 // Anyone but the author can comment `@coderabbitai approve` or `resolve`, and the bot then approves without a finished
 // review and over its own findings. So its approval counts only with its check on the head finished and no change
 // request of its own on that head; lifting one of those takes an approval from an account with write access.
