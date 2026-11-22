@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { checksState } from './checks'
-import { approvedLogins, refusal, workflowRefusal, type Decision, type PullRequest, type Review } from './decision'
+import { approvedLogins, botApprovedHead, refusal, workflowRefusal, type Decision, type PullRequest, type Review } from './decision'
 import { cleanFollowUpAt } from './follow-up'
 
 const repository = 'owner/repo'
@@ -235,5 +235,20 @@ describe('approvedLogins', () => {
   it('names each approver of the head once, without the review bot', () => {
     const reviews = [review(), review({ login: 'person' }), review({ login: 'person' }), review({ login: 'old', commit_id: older }), review({ login: 'other', state: 'COMMENTED' })]
     expect(approvedLogins(reviews, head)).toEqual(['person'])
+  })
+})
+
+describe('botApprovedHead', () => {
+  it('takes an approval of the head by the review bot after the label', () => {
+    expect(botApprovedHead([review()], head, [labelled])).toBe(true)
+  })
+
+  it('refuses an approval of an earlier head, before the label, by someone else, or none', () => {
+    expect(botApprovedHead([review({ commit_id: older })], head, [labelled])).toBe(false)
+    expect(botApprovedHead([review({ submitted_at: beforeLabel })], head, [labelled])).toBe(false)
+    expect(botApprovedHead([review({ login: 'person' })], head, [labelled])).toBe(false)
+    expect(botApprovedHead([review({ state: 'COMMENTED' })], head, [labelled])).toBe(false)
+    expect(botApprovedHead([], head, [labelled])).toBe(false)
+    expect(botApprovedHead([review()], head, [])).toBe(false)
   })
 })

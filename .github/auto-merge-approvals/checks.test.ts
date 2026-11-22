@@ -16,15 +16,22 @@ const own = 9
 describe('reviewBotFinished', () => {
   const bot = { name: 'CodeRabbit', app: { slug: 'coderabbitai' } }
 
-  it('takes a passed check of that name from the app', () => {
-    expect(reviewBotFinished([check(bot)])).toBe(true)
+  it('takes a passed check of that name from the app, with or without an approval of the head', () => {
+    expect(reviewBotFinished([check(bot)], true)).toBe(true)
+    expect(reviewBotFinished([check(bot)], false)).toBe(true)
+  })
+
+  it('takes a skipped check only with an approval of the head', () => {
+    expect(reviewBotFinished([check({ ...bot, conclusion: 'skipped' })], true)).toBe(true)
+    expect(reviewBotFinished([check({ ...bot, conclusion: 'skipped' })], false)).toBe(false)
   })
 
   it('refuses a check still running, another outcome and another app under its name', () => {
-    expect(reviewBotFinished([check({ ...bot, status: 'in_progress', conclusion: null })])).toBe(false)
-    expect(reviewBotFinished([check({ ...bot, conclusion: 'failure' })])).toBe(false)
-    expect(reviewBotFinished([check({ name: 'CodeRabbit', app: { slug: 'someone' } })])).toBe(false)
-    expect(reviewBotFinished([])).toBe(false)
+    expect(reviewBotFinished([check({ ...bot, status: 'in_progress', conclusion: null })], true)).toBe(false)
+    expect(reviewBotFinished([check({ ...bot, conclusion: 'failure' })], true)).toBe(false)
+    expect(reviewBotFinished([check({ ...bot, conclusion: 'neutral' })], true)).toBe(false)
+    expect(reviewBotFinished([check({ name: 'CodeRabbit', app: { slug: 'someone' } })], true)).toBe(false)
+    expect(reviewBotFinished([], true)).toBe(false)
   })
 })
 

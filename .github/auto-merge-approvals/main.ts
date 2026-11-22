@@ -5,7 +5,7 @@
 //   DEFAULT_BRANCH=main DISPATCH_AFTER_MERGE='release.yml docs.yml' bun .github/auto-merge-approvals/main.ts
 import { readFileSync } from 'node:fs'
 import { checksState, reviewBotFinished } from './checks'
-import { approvedLogins, pullRefusal, refusal, workflowRefusal } from './decision'
+import { approvedLogins, botApprovedHead, pullRefusal, refusal, workflowRefusal } from './decision'
 import { cleanFollowUpAt } from './follow-up'
 import { gitHub } from './github'
 import { land } from './land'
@@ -36,7 +36,7 @@ async function checksOf(sha: string) {
     github.statuses(sha),
     github.workflowId(required('GITHUB_RUN_ID')),
   ])
-  return { checks: checksState(runs, checkRuns, statuses, ownWorkflowId), reviewBotFinished: reviewBotFinished(checkRuns) }
+  return { checks: checksState(runs, checkRuns, statuses, ownWorkflowId), checkRuns }
 }
 
 // Why the pull request may not merge now, or null. It reads no more of GitHub than the pull request itself needs.
@@ -56,7 +56,8 @@ async function whyNot(pull: Awaited<ReturnType<typeof github.pullRequest>>) {
   if (pull.user) logins.add(pull.user.login)
   const roles = Object.fromEntries(await Promise.all([...logins].map(async (login) => [login, await github.role(login)])))
   const followUpCleanAt = cleanFollowUpAt(comments, pull.head.sha)
-  return refusal({ repository, pull, timeline, reviews, files, roles, followUpCleanAt, ...head })
+  const botFinished = reviewBotFinished(head.checkRuns, botApprovedHead(reviews, pull.head.sha, timeline))
+  return refusal({ repository, pull, timeline, reviews, files, roles, followUpCleanAt, checks: head.checks, reviewBotFinished: botFinished })
 }
 
 for (const number of await pullNumbers()) {
