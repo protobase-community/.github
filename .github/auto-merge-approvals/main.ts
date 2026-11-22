@@ -5,12 +5,11 @@
 //   DEFAULT_BRANCH=main DISPATCH_AFTER_MERGE='release.yml docs.yml' bun .github/auto-merge-approvals/main.ts
 import { readFileSync } from 'node:fs'
 import { checksState, reviewBotFinished } from './checks'
-import { approvedLogins, botApprovedHead, pullRefusal, refusal, workflowRefusal } from './decision'
+import { approvedLogins, botApprovedHead, pullRefusal, refusal } from './decision'
 import { cleanFollowUpAt } from './follow-up'
 import { gitHub } from './github'
 import { land } from './land'
 import { eventTarget, pullsOfCommit } from './target'
-import { noticed, workflowNotice } from './workflow-notice'
 
 function required(name: string) {
   const value = process.env[name]
@@ -44,10 +43,9 @@ async function whyNot(pull: Awaited<ReturnType<typeof github.pullRequest>>) {
   const refused = pullRefusal(pull, repository)
   if (refused) return refused
 
-  const [timeline, reviews, files, comments, head] = await Promise.all([
+  const [timeline, reviews, comments, head] = await Promise.all([
     github.timeline(pull.number),
     github.reviews(pull.number),
-    github.files(pull.number),
     github.comments(pull.number),
     checksOf(pull.head.sha),
   ])
@@ -57,7 +55,7 @@ async function whyNot(pull: Awaited<ReturnType<typeof github.pullRequest>>) {
   const roles = Object.fromEntries(await Promise.all([...logins].map(async (login) => [login, await github.role(login)])))
   const followUpCleanAt = cleanFollowUpAt(comments, pull.head.sha)
   const botFinished = reviewBotFinished(head.checkRuns, botApprovedHead(reviews, pull.head.sha))
-  return refusal({ repository, pull, timeline, reviews, files, roles, followUpCleanAt, checks: head.checks, reviewBotFinished: botFinished })
+  return refusal({ repository, pull, timeline, reviews, roles, followUpCleanAt, checks: head.checks, reviewBotFinished: botFinished })
 }
 
 for (const number of await pullNumbers()) {
@@ -65,7 +63,6 @@ for (const number of await pullNumbers()) {
   const reason = await whyNot(pull)
   if (reason) {
     console.log(`Not merging #${number}: ${reason}.`)
-    if (reason === workflowRefusal && !noticed(await github.comments(number))) await github.comment(number, workflowNotice)
     continue
   }
 

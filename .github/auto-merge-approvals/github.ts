@@ -1,6 +1,6 @@
 // The GitHub REST calls the auto-merge makes, with the workflow's token. Any answer not named here throws.
 import type { CheckRun, CommitStatus, WorkflowRun } from './checks'
-import type { PullFile, PullRequest, Review, TimelineEvent } from './decision'
+import type { PullRequest, Review, TimelineEvent } from './decision'
 import type { IssueComment } from './follow-up'
 import type { CommitPull } from './target'
 
@@ -49,11 +49,7 @@ export function gitHub(token: string, repository: string) {
     commitPulls: (sha: string) => read<CommitPull[]>(`${repo}/commits/${sha}/pulls?per_page=100`),
     timeline: (number: number) => all<TimelineEvent>(`${repo}/issues/${number}/timeline`),
     reviews: (number: number) => all<Review>(`${repo}/pulls/${number}/reviews`),
-    files: (number: number) => all<PullFile>(`${repo}/pulls/${number}/files`),
     comments: (number: number) => all<IssueComment>(`${repo}/issues/${number}/comments`),
-    async comment(number: number, body: string) {
-      await request(`${repo}/issues/${number}/comments`, { method: 'POST', body: JSON.stringify({ body }) })
-    },
 
     // The login's role, or empty for an account the API does not know, such as an app.
     async role(login: string) {

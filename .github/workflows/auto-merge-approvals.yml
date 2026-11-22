@@ -26,8 +26,7 @@
 #     merge:
 #       uses: protobase-community/.github/.github/workflows/auto-merge-approvals.yml@main
 #
-# It merges with the caller's GITHUB_TOKEN. A pull request that changes a workflow never merges itself, as such a change
-# could turn off the checks the merge waits on: it is left to a maintainer, which it says once on the pull request.
+# It merges with the caller's GITHUB_TOKEN.
 name: auto-merge-approvals
 
 on:

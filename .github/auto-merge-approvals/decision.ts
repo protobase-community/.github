@@ -16,10 +16,7 @@ export type PullRequest = {
   // repo is null for a fork that was deleted.
   head: { sha: string; ref: string; repo: { full_name: string } | null }
   base: { ref: string }
-  changed_files: number
 }
-// previous_filename is set for a rename only.
-export type PullFile = { filename: string; previous_filename?: string }
 // Listed oldest first, as GitHub lists them. user is null for a deleted account.
 export type Review = { user: { login: string } | null; state: string; commit_id: string; submitted_at: string }
 export type TimelineEvent = { event: string; created_at?: string; label?: { name: string } }
@@ -29,7 +26,6 @@ export type Decision = {
   pull: PullRequest
   timeline: TimelineEvent[]
   reviews: Review[]
-  files: PullFile[]
   // Each login of approvedLogins and the author's, with the role_name of GitHub's collaborator permission API.
   roles: Record<string, string>
   // When the follow-up check last found the head clean (follow-up.ts), or null.
@@ -47,17 +43,6 @@ export function pullRefusal(pull: PullRequest, repository: string) {
   if (labels.includes(holdLabel)) return `it has the ${holdLabel} label`
   if (!labels.includes(approvalLabel)) return `it has no ${approvalLabel} label`
   return null
-}
-
-export const workflowRefusal = 'it changes a workflow, which waits for a human merge'
-const workflowFolder = '.github/workflows/'
-
-// A workflow change could turn off the checks the merge waits for, so it needs a human. Renaming a workflow out of the
-// folder or deleting one counts. GitHub lists at most 3,000 files, and a longer list could hide one, so it refuses too.
-function workflowChangeRefusal(pull: PullRequest, files: PullFile[]) {
-  if (files.length < pull.changed_files) return `GitHub listed only ${files.length} of its ${pull.changed_files} changed files`
-  const paths = files.flatMap((file) => [file.filename, file.previous_filename ?? ''])
-  return paths.some((path) => path.startsWith(workflowFolder)) ? workflowRefusal : null
 }
 
 // When the label was last added, so taking it off and adding it again asks a person or the follow-up check for a new
@@ -106,8 +91,8 @@ function followUpCounts(pull: PullRequest, repository: string, roles: Record<str
 // counts whenever it came, as the label is the opt-in and the head is what it approved. Anyone else's approval and the
 // follow-up check's verdict must come after the label. Timestamps have whole seconds, and one in the same second as the
 // label does not count, as it cannot be shown to have come after it.
-export function refusal({ repository, pull, timeline, reviews, files, roles, followUpCleanAt, checks, reviewBotFinished }: Decision) {
-  const refused = pullRefusal(pull, repository) ?? workflowChangeRefusal(pull, files)
+export function refusal({ repository, pull, timeline, reviews, roles, followUpCleanAt, checks, reviewBotFinished }: Decision) {
+  const refused = pullRefusal(pull, repository)
   if (refused) return refused
 
   const head = pull.head.sha

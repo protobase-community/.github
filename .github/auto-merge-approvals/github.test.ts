@@ -19,15 +19,15 @@ describe('deleteBranch', () => {
   })
 })
 
-describe('files', () => {
-  it('reads every page of the changed files', async () => {
-    const page = (count: number) => Response.json(Array.from({ length: count }, (_, index) => ({ filename: `f${index}` })))
+describe('a list', () => {
+  it('reads every page', async () => {
+    const page = (count: number) => Response.json(Array.from({ length: count }, (_, index) => ({ state: `s${index}` })))
     const fetch = vi.fn().mockResolvedValueOnce(page(100)).mockResolvedValueOnce(page(1))
     vi.stubGlobal('fetch', fetch)
-    await expect(gitHub('token', 'owner/repo').files(7)).resolves.toHaveLength(101)
+    await expect(gitHub('token', 'owner/repo').reviews(7)).resolves.toHaveLength(101)
     expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      'https://api.github.com/repos/owner/repo/pulls/7/files?per_page=100&page=1',
-      'https://api.github.com/repos/owner/repo/pulls/7/files?per_page=100&page=2',
+      'https://api.github.com/repos/owner/repo/pulls/7/reviews?per_page=100&page=1',
+      'https://api.github.com/repos/owner/repo/pulls/7/reviews?per_page=100&page=2',
     ])
   })
 })
@@ -59,7 +59,7 @@ describe('a server error', () => {
   it('never asks a write again', async () => {
     const fetch = answer(502)
     vi.stubGlobal('fetch', fetch)
-    await expect(gitHub('token', 'owner/repo').comment(7, 'body')).rejects.toThrow('GitHub answered 502')
+    await expect(gitHub('token', 'owner/repo').dispatchWorkflow('release.yml', 'main')).rejects.toThrow('GitHub answered 502')
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
