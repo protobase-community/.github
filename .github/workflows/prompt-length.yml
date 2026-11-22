@@ -1,6 +1,6 @@
 # Fails when a file of review instructions is longer than the AI review bot that reads it accepts, so a bot never
-# silently cuts the end off. cubic uses only the first 10,000 characters of a custom agent's text and linked files;
-# CodeRabbit allows 20,000 characters per path instruction and 10,000 per custom pre-merge check.
+# silently cuts the end off. CodeRabbit allows 20,000 characters per path instruction and 10,000 per custom pre-merge
+# check; it documents no limit for code guideline files such as AGENTS.md, so those need no entry.
 #
 # A caller lists one file per line in files: its path in the calling repository, a space, and its character limit:
 #
@@ -9,16 +9,16 @@
 #       uses: protobase-community/.github/.github/workflows/prompt-length.yml@main # zizmor: ignore[unpinned-uses] main is the reviewed version
 #       with:
 #         files: |
-#           cubic.yaml 10000
+#           docs/review.md 20000
 #
-# Characters are Unicode code points, as the vendors' JSON schemas count maxLength, not bytes: an "é" is one.
+# Characters are Unicode code points, as CodeRabbit's JSON schema counts maxLength, not bytes: an "é" is one.
 name: prompt-length
 
 on:
   workflow_call:
     inputs:
       files:
-        description: One file per line, its path and its character limit separated by a space, such as `cubic.yaml 10000`.
+        description: One file per line, its path and its character limit separated by a space, such as `docs/review.md 20000`.
         type: string
         required: true
 
