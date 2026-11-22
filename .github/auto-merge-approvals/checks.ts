@@ -8,7 +8,7 @@ export type ChecksState = { state: 'green' | 'pending' | 'red'; names: string[] 
 
 // Whether CodeRabbit's own check on the commit finished, by the app that wrote it, as anything can take its name. The
 // check is skipped when the commit brings nothing to review, such as a merge of the base branch, and then it counts only
-// when the bot approved that exact commit after the label (botApprovedHead).
+// when the bot approved that exact commit (botApprovedHead).
 export const reviewBotFinished = (checkRuns: CheckRun[], botApprovedHead: boolean) =>
   checkRuns.some(
     (check) =>
