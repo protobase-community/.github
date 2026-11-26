@@ -1,9 +1,8 @@
 # The shared auto-merge on approval: a repository whose pull requests land on CodeRabbit's review, with its AI review
 # off, calls it from a workflow of its own with the triggers below, and its pull requests with the
-# auto-merge-approvals label merge inside GitHub once green and approved: by CodeRabbit, before or after the label, or by
-# an account with write access after it (.github/auto-merge-approvals). Adding the label merges a head CodeRabbit already
-# approved, as no later event may come. The caller names its own CI workflows under workflow_run, since a called
-# workflow takes its caller's triggers:
+# auto-merge-approvals label merge inside GitHub once green and approved on the head, before or after the label
+# (.github/auto-merge-approvals). Adding the label merges a head that is already approved, as no later event may come.
+# The caller names its own CI workflows under workflow_run, since a called workflow takes its caller's triggers:
 #
 #   on:
 #     pull_request_target: # zizmor: ignore[dangerous-triggers] nothing from the pull request runs

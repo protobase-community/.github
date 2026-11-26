@@ -1,7 +1,7 @@
-# Merges the pull requests a workflow event is about once CodeRabbit, or anyone with write access, approved the head
-# after the auto-merge-approvals label was added and every other check on the head passed (decision.ts holds the
-# rules). The reusable workflow .github/workflows/auto-merge-approvals.yml runs it; it is an action rather than a step of
-# that workflow so the runner fetches these scripts from this repository, while a called workflow's checkout fetches the
+# Merges the pull requests a workflow event is about with the auto-merge-approvals label once an approval of the head
+# stands, before or after the label, and every other check on the head passed (decision.ts holds the rules). The
+# reusable workflow .github/workflows/auto-merge-approvals.yml runs it; it is an action rather than a step of that
+# workflow so the runner fetches these scripts from this repository, while a called workflow's checkout fetches the
 # caller's.
 name: auto-merge-approvals
 description: Merge an approved pull request with the auto-merge-approvals label once every check on its head passed.

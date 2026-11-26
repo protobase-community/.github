@@ -5,7 +5,7 @@
 //   DEFAULT_BRANCH=main DISPATCH_AFTER_MERGE='release.yml docs.yml' bun .github/auto-merge-approvals/main.ts
 import { readFileSync } from 'node:fs'
 import { checksState, reviewBotFinished } from './checks'
-import { approvedLogins, botApprovedHead, pullRefusal, refusal, workflowRefusal } from './decision'
+import { botApprovedHead, pullRefusal, refusal, workflowRefusal } from './decision'
 import { cleanFollowUpAt } from './follow-up'
 import { gitHub } from './github'
 import { land } from './land'
@@ -52,9 +52,7 @@ async function whyNot(pull: Awaited<ReturnType<typeof github.pullRequest>>) {
     checksOf(pull.head.sha),
   ])
   // The author's access decides whether the follow-up check's verdict counts.
-  const logins = new Set(approvedLogins(reviews, pull.head.sha))
-  if (pull.user) logins.add(pull.user.login)
-  const roles = Object.fromEntries(await Promise.all([...logins].map(async (login) => [login, await github.role(login)])))
+  const roles: Record<string, string> = pull.user ? { [pull.user.login]: await github.role(pull.user.login) } : {}
   const followUpCleanAt = cleanFollowUpAt(comments, pull.head.sha)
   const botFinished = reviewBotFinished(head.checkRuns, botApprovedHead(reviews, pull.head.sha))
   return refusal({ repository, pull, timeline, reviews, files, roles, followUpCleanAt, checks: head.checks, reviewBotFinished: botFinished })

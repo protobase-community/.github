@@ -30,7 +30,7 @@ export type Decision = {
   timeline: TimelineEvent[]
   reviews: Review[]
   files: PullFile[]
-  // Each login of approvedLogins and the author's, with the role_name of GitHub's collaborator permission API.
+  // The author's login, with the role_name of GitHub's collaborator permission API.
   roles: Record<string, string>
   // When the follow-up check last found the head clean (follow-up.ts), or null.
   followUpCleanAt: number | null
@@ -60,8 +60,8 @@ function workflowChangeRefusal(pull: PullRequest, files: PullFile[]) {
   return paths.some((path) => path.startsWith(workflowFolder)) ? workflowRefusal : null
 }
 
-// When the label was last added, so taking it off and adding it again asks a person or the follow-up check for a new
-// approval. GitHub lists no event when the label's history is gone, and then only the review bot's approval counts.
+// When the label was last added, so taking it off and adding it again asks the follow-up check for a new verdict. GitHub
+// lists no event when the label's history is gone, and then the follow-up check's verdict does not count.
 function labelledAt(timeline: TimelineEvent[]) {
   const added = timeline.filter((item) => item.event === 'labeled' && item.label?.name === approvalLabel)
   return added.length === 0 ? null : Math.max(...added.map((item) => Date.parse(item.created_at ?? '')))
@@ -69,21 +69,23 @@ function labelledAt(timeline: TimelineEvent[]) {
 
 const onHead = (reviews: Review[], head: string) => reviews.filter((review) => review.commit_id === head)
 
-// The logins whose access the decision needs: those who approved the head, apart from the review bot, which holds none.
-export function approvedLogins(reviews: Review[], head: string) {
-  const logins = onHead(reviews, head).flatMap((review) => (review.state === 'APPROVED' && review.user ? [review.user.login] : []))
-  return [...new Set(logins)].filter((login) => login !== reviewBot)
-}
-
-// A comment leaves a change request standing, as it does on GitHub, and dismissing one turns it into DISMISSED.
-function standingChangeRequests(reviews: Review[], head: string) {
-  const verdicts = new Map<string | undefined, string>()
+// Each reviewer's last verdict on the head. A comment leaves it standing, as it does on GitHub, and dismissing a review
+// turns it into DISMISSED, so a later change request or dismissal takes back that reviewer's approval.
+function verdicts(reviews: Review[], head: string) {
+  const last = new Map<string | undefined, string>()
   for (const review of onHead(reviews, head)) {
     if (review.state === 'APPROVED' || review.state === 'CHANGES_REQUESTED' || review.state === 'DISMISSED')
-      verdicts.set(review.user?.login, review.state)
+      last.set(review.user?.login, review.state)
   }
-  return [...verdicts].filter(([, state]) => state === 'CHANGES_REQUESTED').map(([login]) => login ?? 'a deleted account')
+  return [...last]
 }
+
+const standingChangeRequests = (reviews: Review[], head: string) =>
+  verdicts(reviews, head).filter(([, state]) => state === 'CHANGES_REQUESTED').map(([login]) => login ?? 'a deleted account')
+
+// Who stands by an approval of the head. A deleted account's approval does not count, as nothing tells who gave it.
+const approvers = (reviews: Review[], head: string) =>
+  verdicts(reviews, head).flatMap(([login, state]) => (login !== undefined && state === 'APPROVED' ? [login] : []))
 
 // Whether the review bot approved the head, before or after the label.
 export const botApprovedHead = (reviews: Review[], head: string) =>
@@ -91,7 +93,7 @@ export const botApprovedHead = (reviews: Review[], head: string) =>
 
 // Anyone but the author can comment `@coderabbitai approve` or `resolve`, and the bot then approves without a finished
 // review and over its own findings. So its approval counts only with its check on the head finished and no change
-// request of its own on that head; lifting one of those takes an approval from an account with write access.
+// request of its own on that head; lifting one of those takes another approval.
 const botRequestedChanges = (reviews: Review[], head: string) =>
   onHead(reviews, head).some((review) => review.user?.login === reviewBot && review.state === 'CHANGES_REQUESTED')
 
@@ -102,10 +104,10 @@ function followUpCounts(pull: PullRequest, repository: string, roles: Record<str
   return pull.head.repo?.full_name === repository && writeRoles.has(roles[pull.user?.login ?? ''] ?? '')
 }
 
-// Why the pull request may not merge as it is now, or null when its head may. The review bot's approval of the head
-// counts whenever it came, as the label is the opt-in and the head is what it approved. Anyone else's approval and the
-// follow-up check's verdict must come after the label. Timestamps have whole seconds, and one in the same second as the
-// label does not count, as it cannot be shown to have come after it.
+// Why the pull request may not merge as it is now, or null when its head may. An approval of the head counts from any
+// account and whenever it came, as the label is the opt-in, only accounts with triage access can add it, and the head is
+// what was approved. The follow-up check's verdict must come after the label. Timestamps have whole seconds, and one in
+// the same second as the label does not count, as it cannot be shown to have come after it.
 export function refusal({ repository, pull, timeline, reviews, files, roles, followUpCleanAt, checks, reviewBotFinished }: Decision) {
   const refused = pullRefusal(pull, repository) ?? workflowChangeRefusal(pull, files)
   if (refused) return refused
@@ -114,23 +116,17 @@ export function refusal({ repository, pull, timeline, reviews, files, roles, fol
   const requesters = standingChangeRequests(reviews, head)
   if (requesters.length > 0) return `changes are requested by ${requesters.join(', ')}`
 
-  const labelled = labelledAt(timeline)
-  const afterLabel = (at: number) => labelled !== null && at > labelled
+  const approved = approvers(reviews, head)
   const botRequested = botRequestedChanges(reviews, head)
   const botCounts = reviewBotFinished && !botRequested
-  const counts = (review: Review) => {
-    const login = review.user?.login
-    if (login === reviewBot) return botCounts
-    return writeRoles.has(roles[login ?? ''] ?? '') && afterLabel(Date.parse(review.submitted_at))
-  }
-  const approvals = onHead(reviews, head).filter((review) => review.state === 'APPROVED')
-  const reviewed = approvals.some(counts)
-  const followedUp = followUpCleanAt !== null && afterLabel(followUpCleanAt) && followUpCounts(pull, repository, roles)
+  const reviewed = approved.some((login) => login !== reviewBot || botCounts)
+  const labelled = labelledAt(timeline)
+  const followedUp =
+    followUpCleanAt !== null && labelled !== null && followUpCleanAt > labelled && followUpCounts(pull, repository, roles)
   if (!reviewed && !followedUp) {
-    const botApproved = approvals.some((review) => review.user?.login === reviewBot)
-    if (botApproved && botRequested)
-      return `${reviewBot} approved ${head.slice(0, 7)} after its own change request on it, so it needs an approval from an account with write access or that change request dismissed`
-    return `no approval of ${head.slice(0, 7)} counts: one from ${reviewBot} needs its check on it finished, any other must come after the ${approvalLabel} label`
+    if (approved.includes(reviewBot) && botRequested)
+      return `${reviewBot} approved ${head.slice(0, 7)} after its own change request on it, so it needs another approval or that change request dismissed`
+    return `no approval of ${head.slice(0, 7)} counts: it has none, or only one from ${reviewBot} with its check on it unfinished`
   }
 
   if (checks.state === 'red') return `these did not pass: ${checks.names.join(', ')}`
